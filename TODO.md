@@ -1,9 +1,16 @@
-# TODO
+# TODO List
 
 ## Short-Term
 
-- [ ] Change all custom error types to `io::Error`
+- [ ] Add rudimentary testing for Linux, MacOS
+- [ ] Basic CI checks
+- [ ] Add basic examples
+- [ ] Document all public APIs
 
 ## Long-Term
 
-- [ ] Remove dlopen2
+- [ ] Add support for setting IP addresses/subnets
+- [ ] Comprehensive testing for Linux, MacOS, Windows
+- [ ] Implement `tap-windows6` driver support
+- [ ] Add Berkeley Packet Filter (BPF) support where applicable
+- [ ] Introduce rudimentary `async` runtime support

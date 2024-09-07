@@ -1,4 +1,3 @@
-
 use std::io;
 
 use crate::{DeviceState, Interface};
@@ -27,7 +26,7 @@ impl Tap {
     // new_named(if_name) -> opens the given TUN device, or creates one if doesn't exist
 
     // Note: Wintun TOCTOU? Only if other interface not created with Wintun but not `tappers`
-    // 
+    //
 
     /// Creates a new, unique TUN device.
     #[inline]

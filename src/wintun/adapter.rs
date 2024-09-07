@@ -1,19 +1,18 @@
-use std::{io, ptr};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::NonNull;
+use std::{io, ptr};
 
 use once_cell::sync::OnceCell;
 use windows_sys::core::GUID;
-use windows_sys::Win32::NetworkManagement::IpHelper::{GetIfEntry, SetIfEntry, MIB_IFROW, MIB_IF_ADMIN_STATUS_DOWN, MIB_IF_ADMIN_STATUS_UP};
+use windows_sys::Win32::NetworkManagement::IpHelper::{
+    GetIfEntry, SetIfEntry, MIB_IFROW, MIB_IF_ADMIN_STATUS_DOWN, MIB_IF_ADMIN_STATUS_UP,
+};
 
 use crate::{DeviceState, Interface};
 
 use super::dll::{Wintun, WintunAdapter};
 use super::{TunSession, WintunLoggerCallback};
-
-
-
 
 // TODO: Once `std::cell::OnceCell` has the `get_or_try_init()` API, we can switch this.
 #[doc(hidden)]
@@ -28,7 +27,7 @@ pub struct TunAdapter {
 
 impl TunAdapter {
     /// Creates a new TUN adapter.
-    /// 
+    ///
     /// The TUN interface will be destroyed when the `TunAdapter` created by this method is
     /// dropped.
     pub fn create(if_name: Interface) -> Result<Self, io::Error> {
@@ -63,7 +62,7 @@ impl TunAdapter {
     }
 
     /// Returns the currently installed driver version.
-    /// 
+    ///
     /// This function will return an error if the Wintun driver is not currently loaded. Creating
     /// a new `TunAdapter` generally causes the driver to be loaded if it is not already, so it is
     /// best to call this function after [`create()`](Self::create) or [`open()`](Self::open).
@@ -117,9 +116,12 @@ impl TunAdapter {
             0 => match row.dwAdminStatus {
                 MIB_IF_ADMIN_STATUS_UP => Ok(DeviceState::Up),
                 MIB_IF_ADMIN_STATUS_DOWN => Ok(DeviceState::Down),
-                s => Err(io::Error::new(io::ErrorKind::Other, format!("invalid device state {} returned", s))),
+                s => Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("invalid device state {} returned", s),
+                )),
             },
-            e => Err(io::Error::from_raw_os_error(e as i32))
+            e => Err(io::Error::from_raw_os_error(e as i32)),
         }
     }
 
@@ -159,7 +161,7 @@ impl TunAdapter {
 
         match unsafe { SetIfEntry(ptr::addr_of!(row)) } {
             0 => Ok(()),
-            e => Err(io::Error::from_raw_os_error(e as i32))
+            e => Err(io::Error::from_raw_os_error(e as i32)),
         }
     }
 
@@ -194,31 +196,38 @@ impl TunAdapter {
 
         match unsafe { GetIfEntry(ptr::addr_of_mut!(row)) } {
             0 => Ok(row.dwMtu as usize),
-            e => Err(io::Error::from_raw_os_error(e as i32))
+            e => Err(io::Error::from_raw_os_error(e as i32)),
         }
     }
 
     /// Starts a single session on the given adapter.
     pub fn start_session(&mut self, ring_size: u32) -> Result<TunSession<'_>, io::Error> {
-        let session = self.wintun.start_session(unsafe { self.adapter.as_mut() }, ring_size)?;
+        let session = self
+            .wintun
+            .start_session(unsafe { self.adapter.as_mut() }, ring_size)?;
         Ok(TunSession::new(self, session))
     }
 
     /// Starts a specified number of sessions on the given adapter.
-    pub fn start_sessions(&mut self, ring_size: u32, num_sessions: usize) -> io::Result<Vec<TunSession<'_>>> {
+    pub fn start_sessions(
+        &mut self,
+        ring_size: u32,
+        num_sessions: usize,
+    ) -> io::Result<Vec<TunSession<'_>>> {
         let mut sessions = Vec::new();
         let mut session_ptrs = Vec::new();
 
         for _ in 0..num_sessions {
-            let session = self.wintun.start_session(unsafe { self.adapter.as_mut() }, ring_size)?;
+            let session = self
+                .wintun
+                .start_session(unsafe { self.adapter.as_mut() }, ring_size)?;
             session_ptrs.push(session);
         }
-
 
         for session in session_ptrs {
             sessions.push(TunSession::new(self, session));
         }
-        
+
         Ok(sessions)
     }
 

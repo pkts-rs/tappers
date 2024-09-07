@@ -1,6 +1,6 @@
 use std::ffi::CStr;
-use std::{io, ptr};
 use std::os::fd::RawFd;
+use std::{io, ptr};
 
 use crate::{DeviceState, Interface};
 
@@ -16,20 +16,18 @@ const TUNSETIFF: u64 = 0x400454CA;
 const TUNSETOWNER: u64 = 0x400454CC;
 const TUNSETPERSIST: u64 = 0x400454CB;
 
-
 pub struct Tap {
     fd: RawFd,
 }
 
 impl Tap {
     /// Creates a new TAP device.
-    /// 
+    ///
     /// The interface name associated with this TAP device is chosen by the system, and can be
     /// retrieved via the [`name()`](Self::name) method.
     pub fn new() -> io::Result<Self> {
         Self::new_named(Interface::new_raw(&[b'\0'])?)
     }
-
 
     /// Opens or creates a TTAP device of the given name.
     #[inline]
@@ -45,22 +43,22 @@ impl Tap {
 
         let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
         if fd < 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         }
 
         if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            unsafe { libc::close(fd); }
-            return Err(io::Error::last_os_error())
+            unsafe {
+                libc::close(fd);
+            }
+            return Err(io::Error::last_os_error());
         }
 
-        Ok(Self {
-            fd,
-        })
+        Ok(Self { fd })
     }
 
     /// Creates a new TTAP device, failing if a device of the given name already exists.
     pub fn create_named(if_name: Interface) -> io::Result<Self> {
-        let flags =  libc::IFF_TAP | libc::IFF_NO_PI | libc::IFF_TUN_EXCL;
+        let flags = libc::IFF_TAP | libc::IFF_NO_PI | libc::IFF_TUN_EXCL;
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_i8(),
@@ -71,21 +69,21 @@ impl Tap {
 
         let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
         if fd < 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         }
 
         if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            unsafe { libc::close(fd); }
-            return Err(io::Error::last_os_error())
+            unsafe {
+                libc::close(fd);
+            }
+            return Err(io::Error::last_os_error());
         }
 
-        Ok(Self {
-            fd,
-        })
+        Ok(Self { fd })
     }
 
     /// Sets the persistence of the TAP interface.
-    /// 
+    ///
     /// If set to `false`, the TAP device will be destroyed once all file descriptor handles to it
     /// have been closed. If set to `true`, the TAP device will persist until it is explicitly
     /// closed or the system reboots. By default, persistence is set to `false`.
@@ -98,18 +96,16 @@ impl Tap {
         unsafe {
             match libc::ioctl(self.fd, TUNSETPERSIST, persist) {
                 0.. => Ok(()),
-                _ => Err(io::Error::last_os_error())
+                _ => Err(io::Error::last_os_error()),
             }
         }
     }
 
     /// Retrieves the interface name associated with the TAP device.
     pub fn name(&self) -> io::Result<Interface> {
-         let mut req = libc::ifreq {
+        let mut req = libc::ifreq {
             ifr_name: [0i8; 16],
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
-                ifru_flags: 0,
-            },
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
         unsafe {
@@ -133,7 +129,7 @@ impl Tap {
 
         let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
         if ctrl_fd < 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         }
 
         unsafe {
@@ -155,19 +151,19 @@ impl Tap {
     pub fn state(&self) -> io::Result<DeviceState> {
         let mut req = libc::ifreq {
             ifr_name: [0i8; 16],
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
-                ifru_flags: 0,
-            },
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
         unsafe {
             match libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) {
-                0.. => if (req.ifr_ifru.ifru_flags & libc::IFF_UP as i16) == 0 {
-                    Ok(DeviceState::Down)
-                } else {
-                    Ok(DeviceState::Up)
+                0.. => {
+                    if (req.ifr_ifru.ifru_flags & libc::IFF_UP as i16) == 0 {
+                        Ok(DeviceState::Down)
+                    } else {
+                        Ok(DeviceState::Up)
+                    }
                 }
-                _ => Err(io::Error::last_os_error())
+                _ => Err(io::Error::last_os_error()),
             }
         }
     }
@@ -176,13 +172,11 @@ impl Tap {
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let mut req = libc::ifreq {
             ifr_name: [0i8; 16],
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
-                ifru_flags: 0,
-            },
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
         if unsafe { libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         }
 
         unsafe {
@@ -194,7 +188,7 @@ impl Tap {
 
         let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
         if ctrl_fd < 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         }
 
         unsafe {
@@ -218,14 +212,12 @@ impl Tap {
 
         let mut req = libc::ifreq {
             ifr_name,
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
-                ifru_mtu: 0,
-            },
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_mtu: 0 },
         };
 
         let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
         if ctrl_fd < 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         }
 
         unsafe {
@@ -234,7 +226,10 @@ impl Tap {
                     libc::close(ctrl_fd);
 
                     if req.ifr_ifru.ifru_mtu < 0 {
-                        return Err(io::Error::new(io::ErrorKind::InvalidData, "unexpected negative MTU"))
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "unexpected negative MTU",
+                        ));
                     }
 
                     Ok(req.ifr_ifru.ifru_mtu as usize)
@@ -251,7 +246,7 @@ impl Tap {
     /// Sets the Maximum Transmission Unit (MTU) of the TAP device.
     pub fn set_mtu(&self, mtu: usize) -> io::Result<()> {
         if mtu > i32::MAX as usize {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "MTU too large"))
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "MTU too large"));
         }
 
         let ifr_name = self.name()?.name_raw_i8();
@@ -265,7 +260,7 @@ impl Tap {
 
         let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
         if ctrl_fd < 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         }
 
         unsafe {
@@ -287,7 +282,7 @@ impl Tap {
     pub fn nonblocking(&self) -> io::Result<bool> {
         let flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
         if flags < 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         }
 
         Ok(flags & libc::O_NONBLOCK > 0)
@@ -297,7 +292,7 @@ impl Tap {
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         let flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
         if flags < 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         }
 
         let flags = match nonblocking {
@@ -306,21 +301,21 @@ impl Tap {
         };
 
         if unsafe { libc::fcntl(self.fd, libc::F_SETFL, flags) } < 0 {
-            return Err(io::Error::last_os_error())
+            return Err(io::Error::last_os_error());
         } else {
             Ok(())
         }
     }
 
     /// Sets the Ethernet link type for the TAP device (see libc ARPHRD_* constants).
-    /// 
+    ///
     /// The device must be down (see [`set_state`](Self::set_state)) for this method to succeed.
     /// TAP devices have a default Ethernet link type of `ARPHRD_ETHER`.
     pub fn set_linktype(&self, linktype: u32) -> io::Result<()> {
         unsafe {
             match libc::ioctl(self.fd, TUNSETLINK, linktype) {
                 0.. => Ok(()),
-                _ => Err(io::Error::last_os_error())
+                _ => Err(io::Error::last_os_error()),
             }
         }
     }
@@ -335,7 +330,7 @@ impl Tap {
         unsafe {
             match libc::ioctl(self.fd, TUNSETDEBUG, debug) {
                 0.. => Ok(()),
-                _ => Err(io::Error::last_os_error())
+                _ => Err(io::Error::last_os_error()),
             }
         }
     }
@@ -346,7 +341,7 @@ impl Tap {
         unsafe {
             match libc::ioctl(self.fd, TUNSETOWNER, owner) {
                 0.. => Ok(()),
-                _ => Err(io::Error::last_os_error())
+                _ => Err(io::Error::last_os_error()),
             }
         }
     }
@@ -357,7 +352,7 @@ impl Tap {
         unsafe {
             match libc::ioctl(self.fd, TUNSETGROUP, group) {
                 0.. => Ok(()),
-                _ => Err(io::Error::last_os_error())
+                _ => Err(io::Error::last_os_error()),
             }
         }
     }
@@ -367,7 +362,7 @@ impl Tap {
         unsafe {
             match libc::read(self.fd, data.as_mut_ptr() as *mut libc::c_void, data.len()) {
                 r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error())
+                _ => Err(io::Error::last_os_error()),
             }
         }
     }
@@ -377,7 +372,7 @@ impl Tap {
         unsafe {
             match libc::write(self.fd, data.as_ptr() as *const libc::c_void, data.len()) {
                 r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error())
+                _ => Err(io::Error::last_os_error()),
             }
         }
     }

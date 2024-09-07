@@ -1,7 +1,7 @@
 //! (Windows) TUN-specific interfaces provided by the `wintun` driver.
-//! 
-//! 
-//! 
+//!
+//!
+//!
 
 mod adapter;
 mod dll;
@@ -41,19 +41,27 @@ impl TunImpl {
             if TunAdapter::open(iface).is_err() {
                 match TunAdapter::create(iface) {
                     Ok(adapter) => break adapter,
-                    Err(e) => if e.kind() != io::ErrorKind::AlreadyExists {
-                        return Err(e)
-                    },
+                    Err(e) => {
+                        if e.kind() != io::ErrorKind::AlreadyExists {
+                            return Err(e);
+                        }
+                    }
                 }
             }
 
             tun_id += 1;
             if tun_id > Self::MAX_TUN_ID {
-                return Err(io::Error::new(io::ErrorKind::AlreadyExists, "no unused adapter could be found"))
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "no unused adapter could be found",
+                ));
             }
         };
 
-        let session = adapter.wintun.start_session(unsafe { adapter.adapter.as_mut() }, TunSession::DEFAULT_RING_SIZE)?;
+        let session = adapter.wintun.start_session(
+            unsafe { adapter.adapter.as_mut() },
+            TunSession::DEFAULT_RING_SIZE,
+        )?;
 
         Ok(Self {
             adapter,
@@ -72,11 +80,12 @@ impl TunImpl {
             match TunAdapter::open(if_name) {
                 Ok(adapter) => break adapter,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {
-
                     match TunAdapter::create(if_name) {
                         Ok(adapter) => break adapter,
-                        Err(e) => if e.kind() !=  io::ErrorKind::AlreadyExists {
-                            return Err(e)
+                        Err(e) => {
+                            if e.kind() != io::ErrorKind::AlreadyExists {
+                                return Err(e);
+                            }
                         }
                     }
                 }
@@ -88,12 +97,18 @@ impl TunImpl {
             // we try again.
             if race_retry {
                 // Only retry once--should be probabilistically sufficient for non-adversarial races
-                return Err(io::Error::new(io::ErrorKind::Other, "TUN interface is both present and absent (race condition)"))
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "TUN interface is both present and absent (race condition)",
+                ));
             }
             race_retry = true;
         };
 
-        let session = adapter.wintun.start_session(unsafe { adapter.adapter.as_mut() }, TunSession::DEFAULT_RING_SIZE)?;
+        let session = adapter.wintun.start_session(
+            unsafe { adapter.adapter.as_mut() },
+            TunSession::DEFAULT_RING_SIZE,
+        )?;
 
         Ok(Self {
             adapter,
@@ -147,7 +162,6 @@ impl TunImpl {
         TunSession::read_handle_impl(&self.adapter, &mut self.session)
     }
 }
-
 
 /*
 TODO: add IP address setting like so:

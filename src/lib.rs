@@ -1,7 +1,6 @@
-
 //! Cross-platform TUN/TAP interfaces for Rust.
 //!
-//! 
+//!
 
 #[cfg(target_os = "linux")]
 pub mod linux;
@@ -24,23 +23,23 @@ mod tun;
 pub use tap::Tap;
 pub use tun::Tun;
 
-use std::{array, io, mem};
 use std::ffi::{CStr, OsStr, OsString};
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
+use std::{array, io, mem};
 
-#[cfg(target_os = "windows")]
-use windows_sys::Win32::NetworkManagement::IpHelper::{GetAdapterIndex, MAX_ADAPTER_NAME};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{ERROR_DEV_NOT_EXIST, ERROR_NO_DATA};
-
 #[cfg(target_os = "windows")]
-use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use windows_sys::Win32::NetworkManagement::IpHelper::{GetAdapterIndex, MAX_ADAPTER_NAME};
+
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::ffi::OsStrExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 
 /// The device state of an [`Interface`].
-/// 
+///
 /// Intefaces can generally be configured to be either up (active) or down (inactive). [`Tun`] and
 /// [`Tap`] both allow this state to be set via the [`set_state()`](Tun::set_state) method.
 #[derive(Clone, Copy, Debug)]
@@ -74,7 +73,7 @@ pub struct Interface {
 
 impl Interface {
     /// The maximum length (in bytes) that an interface name can be.
-    /// 
+    ///
     /// Note that this value is platform-dependent. It determines the size of the buffer used for
     /// storing the interface name in an `Interface` instance, so the size of an `Interface` is
     /// likewise platform-dependent.
@@ -84,7 +83,7 @@ impl Interface {
     pub fn any() -> io::Result<Self> {
         #[cfg(not(target_os = "windows"))]
         let name = [0; Self::MAX_INTERFACE_NAME_LEN + 1];
-        
+
         // Leave the interface name blank since this is the catch-all identifier
 
         Ok(Self {
@@ -119,7 +118,10 @@ impl Interface {
         let utf16 = if_name.as_ref().encode_wide();
         let name = array::from_fn(|_| utf16.next().unwrap_or(0));
 
-        let interface = Interface { name, is_catchall: false, };
+        let interface = Interface {
+            name,
+            is_catchall: false,
+        };
 
         Ok(interface)
     }
@@ -143,7 +145,10 @@ impl Interface {
         let mut name_iter = if_name.iter();
         let name = array::from_fn(|_| name_iter.next().cloned().unwrap_or(0));
 
-        Ok(Interface { name, is_catchall: false, })
+        Ok(Interface {
+            name,
+            is_catchall: false,
+        })
     }
 
     /*
@@ -163,7 +168,7 @@ impl Interface {
     pub fn from_index(if_index: u32) -> io::Result<Self> {
         // TODO: do Unix systems other than Linux actually consider '0' to be a catch-all?
         if if_index == 0 {
-            return Self::any()
+            return Self::any();
         }
 
         let mut name = [0u8; Self::MAX_INTERFACE_NAME_LEN + 1];
@@ -172,7 +177,7 @@ impl Interface {
             _ => Ok(Self {
                 name,
                 is_catchall: false,
-            })
+            }),
         }
     }
 
@@ -199,11 +204,14 @@ impl Interface {
         match unsafe { GetAdapterIndex(self.name.as_ptr(), ptr::addr_of_mut!(index)) } {
             0 => Ok(index),
             ERROR_DEV_NOT_EXIST | ERROR_NO_DATA => Err(io::ErrorKind::NotFound.into()),
-            e => Err(io::Error::new(io::ErrorKind::Other, format!("GetAdapterIndex returned error {}", e))),
+            e => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("GetAdapterIndex returned error {}", e),
+            )),
         }
     }
 
-    // If the above doesn't work, use 
+    // If the above doesn't work, use
     // ConvertInterfaceNameToLuidA (or else get the LUID directly) and
     // ConvertInterfaceLuidToIndex
 

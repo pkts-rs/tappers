@@ -1,4 +1,3 @@
-
 use std::io;
 
 use crate::{DeviceState, Interface};
@@ -19,7 +18,6 @@ pub struct Tun {
 }
 
 impl Tun {
-
     // tun_exists(if_name) -> checks to see if the given TUN device exists
 
     // *BSD and MacOS all strictly name interfaces, so we can infer type from iface name.
@@ -32,7 +30,7 @@ impl Tun {
     // new_named(if_name) -> opens the given TUN device, or creates one if doesn't exist
 
     // Note: Wintun TOCTOU? Only if other interface not created with Wintun but not `tappers`
-    // 
+    //
 
     /// Creates a new, unique TUN device.
     #[inline]

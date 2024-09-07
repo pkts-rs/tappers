@@ -24,7 +24,6 @@ const WINTUN_MAX_IP_PACKET_SIZE: u32 = 0xFFFF;
 /// An opaque Wintun adapter type that WINTUN_ADAPTER_HANDLE would point to.
 pub type WintunAdapter = libc::c_void;
 
-
 /// An opaque Wintun session type that WINTUN_SESSION_HANDLE would point to.
 pub type WintunSession = libc::c_void;
 
@@ -37,7 +36,8 @@ pub type WintunPacket = NonNull<u8>;
 /// * `timestamp` The time at which the message was logged, measured in 100ns intervals since
 /// 1601-01-01 UTC
 /// * `message` The text of the log message
-pub type WintunLoggerCallback = unsafe extern "C" fn(level: WintunLoggerLevel, timestamp: u64, message: PCWSTR);
+pub type WintunLoggerCallback =
+    unsafe extern "C" fn(level: WintunLoggerLevel, timestamp: u64, message: PCWSTR);
 
 #[repr(C)]
 pub enum WintunLoggerLevel {

@@ -1,7 +1,5 @@
-
-
 //! MacOS-specific TUN/TAP interfaces.
-//! 
+//!
 
 mod feth;
 mod utun;
@@ -20,9 +18,7 @@ pub(crate) struct TunImpl {
 impl TunImpl {
     #[inline]
     pub fn new() -> io::Result<Self> {
-        Ok(Self {
-            tun: Utun::new()?,
-        })
+        Ok(Self { tun: Utun::new()? })
     }
 
     #[inline]
@@ -68,6 +64,4 @@ impl TunImpl {
     }
 }
 
-pub(crate) struct TapImpl {
-
-}
+pub(crate) struct TapImpl {}

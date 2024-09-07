@@ -1,4 +1,3 @@
-
 //! Linux-specific TUN/TAP interfaces.
 
 // Values that have yet to be included in libc:
@@ -14,7 +13,6 @@ use std::io;
 use crate::{DeviceState, Interface};
 
 pub(crate) const DEV_NET_TUN: *const i8 = b"/dev/net/tun\0".as_ptr() as *const i8;
-
 
 /*
 #[allow(unused)]
@@ -106,11 +104,10 @@ bitflags! {
 
 // TODO: include Generic Receive Offset variant of Tun/Tap
 //
-// Related reading: 
+// Related reading:
 // https://tailscale.com/blog/throughput-improvements
 // https://blog.cloudflare.com/virtual-networking-101-understanding-tap/
 */
-
 
 pub(crate) struct TunImpl {
     tun: Tun,
@@ -119,9 +116,7 @@ pub(crate) struct TunImpl {
 impl TunImpl {
     #[inline]
     pub fn new() -> io::Result<Self> {
-        Ok(Self {
-            tun: Tun::new()?,
-        })
+        Ok(Self { tun: Tun::new()? })
     }
 
     #[inline]
@@ -174,9 +169,7 @@ pub(crate) struct TapImpl {
 impl TapImpl {
     #[inline]
     pub fn new() -> io::Result<Self> {
-        Ok(Self {
-            tun: Tap::new()?,
-        })
+        Ok(Self { tun: Tap::new()? })
     }
 
     #[inline]

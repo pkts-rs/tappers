@@ -410,7 +410,7 @@ impl FethTap {
         })
     }
 
-    /// Determines whether Link Receive Offload (LRO) is enabled for TAP (feth) devices.
+    /// Determines whether Link Receive Offload (LRO) is enabled for all TAP (feth) devices.
     pub fn lro() -> io::Result<bool> {
         let mut lro = 0u32;
         let mut lro_len = mem::size_of_val(&lro);
@@ -429,7 +429,7 @@ impl FethTap {
         }
     }
 
-    /// Enables or disables Link Receive Offload for TAP (feth) devices.
+    /// Enables or disables Link Receive Offload for all TAP (feth) devices.
     pub fn set_lro(lro_enabled: bool) -> io::Result<()> {
         let mut lro = match lro_enabled {
             true => 1i32,
@@ -1593,6 +1593,41 @@ impl FethTap {
         }
 
         Ok(addrs)
+    }
+
+    pub fn destroy(self) -> io::Result<()> {
+        let mut err = None;
+
+        Self::close_fd(self.bpf_fd);
+
+        let mut peer_req = libc::ifreq {
+            ifr_name: self.peer_iface.name_raw_i8(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        match unsafe { libc::ioctl(self.ndrv_fd, SIOCIFDESTROY, ptr::addr_of_mut!(peer_req)) } {
+            0 => (),
+            _ => err = Some(io::Error::last_os_error()),
+        };
+
+        let mut req = libc::ifreq {
+            ifr_name: self.iface.name_raw_i8(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        match unsafe { libc::ioctl(self.ndrv_fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)) } {
+            0 => (),
+            _ => {
+                err.replace(io::Error::last_os_error());
+            }
+        };
+
+        Self::close_fd(self.ndrv_fd);
+
+        match err {
+            None => Ok(()),
+            Some(e) => Err(e),
+        }
     }
 }
 

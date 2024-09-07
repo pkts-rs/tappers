@@ -8,6 +8,7 @@ const UTUN_PREFIX: &[u8] = b"utun";
 const UTUN_CONTROL_NAME: &[u8] = b"com.apple.net.utun_control\0";
 
 const SIOCGIFDEVMTU: libc::c_ulong = 0xc0206944;
+const SIOCIFDESTROY: libc::c_ulong = 0x80206979;
 
 pub struct Utun {
     fd: RawFd,
@@ -233,6 +234,38 @@ impl Utun {
         }
     }
 
+    pub fn destroy(self) -> io::Result<()> {
+        let if_name = self.name()?;
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_i8(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        let res = match unsafe { libc::ioctl(self.fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)) } {
+            0 => Ok(()),
+            _ => Err(io::Error::last_os_error())
+        };
+
+        Self::close_fd(self.fd);
+
+        res
+    }
+
+    fn destroy_iface(sockfd: RawFd, if_name: Interface) {
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_i8(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        unsafe {
+            debug_assert_eq!(
+                libc::ioctl(sockfd, SIOCIFDESTROY, ptr::addr_of_mut!(req)),
+                0
+            );
+        }
+    }
+
     fn close_fd(fd: RawFd) {
         unsafe {
             debug_assert_eq!(libc::close(fd), 0);
@@ -242,6 +275,9 @@ impl Utun {
 
 impl Drop for Utun {
     fn drop(&mut self) {
+        if let Ok(if_name) = self.name() {
+            Self::destroy_iface(self.fd, if_name);
+        }
         Self::close_fd(self.fd);
     }
 }

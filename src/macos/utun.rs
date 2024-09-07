@@ -10,6 +10,14 @@ const UTUN_CONTROL_NAME: &[u8] = b"com.apple.net.utun_control\0";
 const SIOCGIFDEVMTU: libc::c_ulong = 0xc0206944;
 const SIOCIFDESTROY: libc::c_ulong = 0x80206979;
 
+// We use a custom `iovec` struct here because we don't want to do a *const to *mut conversion
+#[repr(C)]
+#[allow(non_camel_case_types)]
+pub struct iovec_send {
+    pub iov_base: *const ::c_void,
+    pub iov_len: ::size_t,
+}
+
 pub struct Utun {
     fd: RawFd,
 }
@@ -188,18 +196,52 @@ impl Utun {
     }
 
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        if buf.len() == 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "packet must not be empty"))
+        }
+
+        let family_prefix = match buf[0] & 0x0f {
+            0x04 => [0u8, 0, 0, 2],
+            0x06 => [0u8, 0, 0, 10],
+            _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "only IPv4 and IPv6 packets are supported over utun")),
+        };
+
+        let iov = [
+            iovec_const {
+                iov_base: family_prefix.as_ptr() as *const libc::c_void,
+                iov_len: family_prefix.len(),
+            },
+            iovec_const {
+                iov_base: buf.as_ptr() as *const libc::c_void,
+                iov_len: buf.len(),
+            },
+        ];
+
         unsafe {
-            match libc::write(self.fd, buf.as_ptr() as *mut libc::c_void, buf.len()) {
-                r @ 0.. => Ok(r as usize),
+            match libc::writev(self.fd, iov.as_ptr() as *const libc::iovec, iov.len()) {
+                r @ 0.. => Ok((r as usize).saturating_sub(family_prefix.len())),
                 _ => Err(io::Error::last_os_error()),
             }
         }
     }
 
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut family_prefix = [0u8; 4];
+        let mut iov = [
+            libc::iovec {
+                iov_base: family_prefix.as_mut_ptr() as *mut libc::c_void,
+                iov_len: family_previx.len(),
+            },
+            libc::iovec {
+                iov_base: buf.as_mut_ptr() as *mut libc::c_void,
+                iov_len: buf.len(),
+            },
+        ];
+
         unsafe {
-            match libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) {
-                r @ 0.. => Ok(r as usize),
+            match libc::readv(self.fd, iov.as_mut_ptr(), iov.len()) {
+                r @ 4.. => Ok((r - 4) as usize),
+                0..4 => Err(io::Error::new(io::ErrorKind::InvalidData, "insufficient bytes received from utun to form packet")),
                 _ => Err(io::Error::last_os_error()),
             }
         }

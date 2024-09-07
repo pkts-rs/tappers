@@ -26,6 +26,26 @@ devices. It supports the following features for each platform:
 
 Note that this library is currently a work in progress--more platforms will be supported soon!
 
+# Feature Comparison to Other Libraries
+
+| Feature                                     | `tappers` | `tun`          | `tun2`           | `tun-tap`  | `utuntap` | `tokio-tun` |
+| ------------------------------------------- | --------- | -------------- | ---------------- | ---------- | --------- | ----------- |
+| Consistent packet format across platforms   | [x]       | [ ]            | [ ]              | Linux only | [ ]       | Linux only  |
+| Uses no subprocess commands (only `ioctl`s) | [x]       | [x]            | [ ]              | [x]        | [x]       | [x]         |
+| Supports multiple TUN/TAP creation          | [x]       | Not on Windows | [x]              | [x]        | [x]       | [x]         |
+| IPv4 routing support                        | Planned   | [x]            | [x]              | [ ]        | [ ]       | [x]         |
+| IPv6 routing support                        | Planned   | [ ]            | Linux only       | [ ]        | [ ]       | [ ]         |
+| Unit testing for `TUN` devices              | Planned   | [x]            | [x]              | [x]        | [x]       | [ ]         |
+| Unit testing for `TAP` devices              | Planned   | [ ]            | [ ]              | [ ]        | [ ]       | [ ]         |
+| Cross-platform CI tests                     | Planned   | [ ]            | [ ]              | N/A        | [ ]       | N/A         |
+| TUN/TAP support for Linux                   | [x]       | TUN only       | TUN only         | [x]        | [x]       | [x]         |
+| TUN/TAP support for MacOS                   | [x]       | TUN only       | TUN only         | [ ]        | TUN only  | [ ]         |
+| TUN/TAP support for Windows                 | TUN only  | TUN only       | TUN only         | [ ]        | [ ]       | [ ]         |
+| TUN/TAP support for *BSD                    | Planned   | [ ]            | FreeBSD/TUN only | [ ]        | OpenBSD   | [ ]         |
+| TUN/TAP support for Solaris/IllumOS         | [ ]       | [ ]            | [ ]              | [ ]        | [ ]       | [ ]         |
+| non-`async` support                         | [x]       | [x]            | [x]              | [x]        | [x]       | [ ]         |
+| `async` support                             | Planned   | [x]            | Unix only        | [x]        | [ ]       | [x]         |
+
 # Additional Notes on Platform Support
 
 Not all platforms implement the standard `/dev/net/tun` interface for TUN/TAP creation; there are

@@ -46,6 +46,10 @@ use std::os::windows::ffi::{OsStrExt, OsStringExt};
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::ffi::OsStrExt;
 
+/// The device state of an [`Interface`].
+/// 
+/// Intefaces can generally be configured to be either up (active) or down (inactive). [`Tun`] and
+/// [`Tap`] both allow this state to be set via the [`set_state()`](Tun::set_state) method.
 #[derive(Clone, Copy, Debug)]
 pub enum DeviceState {
     Up,

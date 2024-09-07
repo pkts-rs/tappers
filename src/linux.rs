@@ -109,6 +109,11 @@ bitflags! {
 // https://blog.cloudflare.com/virtual-networking-101-understanding-tap/
 */
 
+// To delete a device, Netlink RTM_DELLINK is needed
+// for *BSD, look into `brctl delif`
+// for MacOS, `sudo ifconfig [bridge-name] down`
+// `sudo ifconfig [bridge-name] destroy`
+
 pub(crate) struct TunImpl {
     tun: Tun,
 }

@@ -1,0 +1,30 @@
+[package]
+name = "tappers"
+authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
+description = "Cross-platform TUN and TAP interfaces"
+rust-version = "1.66" # `std::os::fd` stabilized
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+repository = "https://github.com/pkts-rs/tappers"
+keywords = ["tun", "tap", "tuntap", "tun_tap", "network"]
+categories = ["network-programming"]
+
+[features]
+default = ["wintun-runtime", "tapwin6-runtime"]
+# Enables loading of Wintun (default is load-time unless `wintun-runtime` is specified)
+wintun = []
+# Enables loading of tap-windows6 (default is load-time unless `tapwin6-runtime` is specified)
+tapwin6 = []
+# Enables fallible run-time loading of Wintun (default is load-time)
+wintun-runtime = ["wintun"]
+# Enables fallible run-time loading of tap-windows6 (default is load-time)
+tapwin6-runtime = ["tapwin6"]
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2" }
+
+#[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System", "Win32_System_LibraryLoader", "Win32_System_Threading"] }
+# To be removed once nightly OnceCell APIs are stabilized
+once_cell = { version = "1.19" }

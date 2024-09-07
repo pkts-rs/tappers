@@ -1,0 +1,106 @@
+name: full CI
+
+on:
+  merge_group:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  style_check:
+    name: Style check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        run: sh ./ci/install-rust.sh
+      - name: Check style
+        run: sh ci/style.sh
+
+  build_channels_linux:
+    name: Build Channels Linux
+    runs-on: ubuntu-22.04
+    env:
+      OS: linux
+    strategy:
+      fail-fast: true
+      max-parallel: 2
+      matrix:
+        toolchain:
+          - stable
+          - 1.66.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        run: TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/install-rust.sh
+      - name: Execute run.sh
+        run: TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/run.sh
+
+  build_channels_macos:
+    name: Build Channels macOS
+    env:
+      OS: macos
+    strategy:
+      fail-fast: true
+      max-parallel: 2
+      matrix:
+        target:
+          - { toolchain: stable, os: macos-14 }
+          - { toolchain: 1.66.0, os: macos-14 }
+    runs-on: ${{ matrix.target.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        run: sh ./ci/install-rust.sh
+      - name: Execute build.sh
+        run: TOOLCHAIN=${{ matrix.target.toolchain }} sh ./ci/run.sh
+
+  build_channels_windows:
+    name: Build Channels Windows
+    runs-on: windows-2022
+    env:
+      OS: windows
+    strategy:
+      fail-fast: true
+      matrix:
+        toolchain:
+          - 1.66.0
+          - stable
+        target:
+          - x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Self-update rustup
+        run: TARGET=${{ matrix.target }} sh ./ci/install-rust.sh
+        shell: bash
+      - name: Execute build.sh
+        run: TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/run.sh
+        shell: bash
+
+  check_cfg:
+    name: "Check #[cfg]s"
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        run: TOOLCHAIN=nightly sh ./ci/install-rust.sh
+      - name: Build with check-cfg
+        run: LIBC_CHECK_CFG=1 cargo build -Z unstable-options -Z check-cfg
+
+  # One job that "summarizes" the success state of this pipeline. This can then be added to branch
+  # protection, rather than having to add each job separately.
+  success:
+    name: success
+    runs-on: ubuntu-22.04
+    needs:
+      - style_check
+      - build_channels_linux
+      - build_channels_macos
+      - build_channels_windows
+    # Github branch protection is exceedingly silly and treats "jobs skipped because a dependency
+    # failed" as success. So we have to do some contortions to ensure the job fails if any of its
+    # dependencies fails.
+    if: always() # make sure this is never "skipped"
+    steps:
+      # Manually check the status of all dependencies. `if: failure()` does not work.
+      - name: check if any dependency failed
+        run: jq --exit-status 'all(.result == "success")' <<< '${{ toJson(needs) }}'

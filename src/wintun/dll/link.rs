@@ -9,11 +9,9 @@ use windows_sys::core::{GUID, PCWSTR};
 use windows_sys::Win32::Foundation::{BOOL, HANDLE};
 use windows_sys::Win32::NetworkManagement::Ndis::NET_LUID_LH;
 
-use crate::wintun::WintunError;
-
 use super::{WintunAdapter, WintunLoggerCallback, WintunPacket, WintunSession};
 
-#[link(name = "wintun", kind = "dylib")]
+#[link(name = "wintun", kind = "raw-dylib")]
 extern "C" {
     /// Creates a new Wintun adapter.
     ///
@@ -146,7 +144,7 @@ extern "C" {
 pub struct Wintun;
 
 impl Wintun {
-    pub fn new() -> Result<Self, WintunError> {
+    pub fn new() -> io::Result<Self> {
         Ok(Self)
     }
 

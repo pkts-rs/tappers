@@ -9,13 +9,21 @@ const UTUN_CONTROL_NAME: &[u8] = b"com.apple.net.utun_control\0";
 
 const SIOCGIFDEVMTU: libc::c_ulong = 0xc0206944;
 const SIOCIFDESTROY: libc::c_ulong = 0x80206979;
+const SIOCGIFFLAGS: libc::c_ulong = 0xc0206911;
+const SIOCSIFFLAGS: libc::c_ulong = 0x80206910;
+
+const SIOCGIFDSTADDR: libc::c_ulong = 0xc0206922;
+const SIOCSIFDSTADDR: libc::c_ulong = 0x8020690e;
+
+const SIOCGIFNETMASK: libc::c_ulong = 0xc0206925;
+const SIOCSIFNETMASK: libc::c_ulong = 0x80206916;
 
 // We use a custom `iovec` struct here because we don't want to do a *const to *mut conversion
 #[repr(C)]
 #[allow(non_camel_case_types)]
-pub struct iovec_send {
-    pub iov_base: *const ::c_void,
-    pub iov_len: ::size_t,
+pub struct iovec_const {
+    pub iov_base: *const libc::c_void,
+    pub iov_len: libc::size_t,
 }
 
 pub struct Utun {
@@ -71,16 +79,23 @@ impl Utun {
         let mut utun_ctrl_iter = UTUN_CONTROL_NAME.iter();
         let mut info = libc::ctl_info {
             ctl_id: 0u32,
-            ctl_name: array::from_fn(|_| utun_ctrl_iter.next().cloned().unwrap_or(0)),
+            ctl_name: array::from_fn(|_| utun_ctrl_iter.next().map(|b| *b as i8).unwrap_or(0)),
         };
 
-        if unsafe { libc::ioctl(fd, libc::CTLIOCGINFO, &info) } != 0 {
+        if unsafe {
+            libc::ioctl(
+                fd,
+                libc::CTLIOCGINFO,
+                ptr::addr_of_mut!(info) as *mut libc::c_void,
+            )
+        } != 0
+        {
             Self::close_fd(fd);
             return Err(io::Error::last_os_error());
         }
 
         let addrlen = mem::size_of::<libc::sockaddr_ctl>();
-        let mut addr = libc::sockaddr_ctl {
+        let addr = libc::sockaddr_ctl {
             sc_len: addrlen as libc::c_uchar,
             sc_family: libc::AF_SYSTEM as libc::c_uchar,
             ss_sysaddr: libc::AF_SYS_CONTROL as u16,
@@ -107,7 +122,7 @@ impl Utun {
     pub fn name(&self) -> io::Result<Interface> {
         let mut name_buf = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
         let name_ptr = ptr::addr_of_mut!(name_buf) as *mut libc::c_void;
-        let mut name_len = Interface::MAX_INTERFACE_NAME_LEN + 1;
+        let mut name_len: u32 = Interface::MAX_INTERFACE_NAME_LEN as u32 + 1;
 
         match unsafe {
             libc::getsockopt(
@@ -115,7 +130,7 @@ impl Utun {
                 libc::SYSPROTO_CONTROL,
                 libc::UTUN_OPT_IFNAME,
                 name_ptr,
-                name_len,
+                ptr::addr_of_mut!(name_len),
             )
         } {
             0 => Ok(Interface {
@@ -142,7 +157,7 @@ impl Utun {
 
         unsafe {
             match libc::ioctl(self.fd, SIOCGIFDEVMTU, ptr::addr_of_mut!(req)) {
-                0 => Ok(unsafe { req.ifr_ifru.ifru_devmtu.ifdm_current as usize }),
+                0 => Ok(req.ifr_ifru.ifru_devmtu.ifdm_current as usize),
                 _ => Err(io::Error::last_os_error()),
             }
         }
@@ -157,7 +172,7 @@ impl Utun {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -177,7 +192,7 @@ impl Utun {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -188,7 +203,7 @@ impl Utun {
             }
         }
 
-        if unsafe { libc::ioctl(self.fd, libc::SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.fd, SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -197,13 +212,21 @@ impl Utun {
 
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         if buf.len() == 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "packet must not be empty"))
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "packet must not be empty",
+            ));
         }
 
         let family_prefix = match buf[0] & 0x0f {
             0x04 => [0u8, 0, 0, 2],
             0x06 => [0u8, 0, 0, 10],
-            _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "only IPv4 and IPv6 packets are supported over utun")),
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "only IPv4 and IPv6 packets are supported over utun",
+                ))
+            }
         };
 
         let iov = [
@@ -218,7 +241,7 @@ impl Utun {
         ];
 
         unsafe {
-            match libc::writev(self.fd, iov.as_ptr() as *const libc::iovec, iov.len()) {
+            match libc::writev(self.fd, iov.as_ptr() as *const libc::iovec, 2) {
                 r @ 0.. => Ok((r as usize).saturating_sub(family_prefix.len())),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -230,7 +253,7 @@ impl Utun {
         let mut iov = [
             libc::iovec {
                 iov_base: family_prefix.as_mut_ptr() as *mut libc::c_void,
-                iov_len: family_previx.len(),
+                iov_len: family_prefix.len(),
             },
             libc::iovec {
                 iov_base: buf.as_mut_ptr() as *mut libc::c_void,
@@ -239,9 +262,12 @@ impl Utun {
         ];
 
         unsafe {
-            match libc::readv(self.fd, iov.as_mut_ptr(), iov.len()) {
+            match libc::readv(self.fd, iov.as_mut_ptr(), 2) {
+                0..=3 => Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "insufficient bytes received from utun to form packet",
+                )),
                 r @ 4.. => Ok((r - 4) as usize),
-                0..4 => Err(io::Error::new(io::ErrorKind::InvalidData, "insufficient bytes received from utun to form packet")),
                 _ => Err(io::Error::last_os_error()),
             }
         }
@@ -286,7 +312,7 @@ impl Utun {
 
         let res = match unsafe { libc::ioctl(self.fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)) } {
             0 => Ok(()),
-            _ => Err(io::Error::last_os_error())
+            _ => Err(io::Error::last_os_error()),
         };
 
         Self::close_fd(self.fd);

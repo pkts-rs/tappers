@@ -1,4 +1,5 @@
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::NonNull;
 use std::{io, ptr};
@@ -8,6 +9,7 @@ use windows_sys::core::GUID;
 use windows_sys::Win32::NetworkManagement::IpHelper::{
     GetIfEntry, SetIfEntry, MIB_IFROW, MIB_IF_ADMIN_STATUS_DOWN, MIB_IF_ADMIN_STATUS_UP,
 };
+use windows_sys::Win32::NetworkManagement::Ndis::NET_LUID_LH;
 
 use crate::{DeviceState, Interface};
 
@@ -51,7 +53,7 @@ impl TunAdapter {
     /// Opens an existing TUN adapter.
     pub fn open(if_name: Interface) -> Result<Self, io::Error> {
         let wintun = WINTUN_API.get_or_try_init(Wintun::new)?;
-        let name_utf16: Vec<u16> = if_name.encode_wide().collect();
+        let name_utf16: Vec<u16> = if_name.name().encode_wide().collect();
         let adapter = wintun.open_adapter(&name_utf16)?;
 
         Ok(Self {
@@ -81,6 +83,11 @@ impl TunAdapter {
     #[inline]
     pub fn name(&self) -> Interface {
         self.if_name
+    }
+
+    pub fn luid(&mut self) -> NET_LUID_LH {
+        self.wintun
+            .get_adapter_luid(unsafe { self.adapter.as_mut() })
     }
 
     #[inline]

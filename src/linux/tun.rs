@@ -300,9 +300,9 @@ impl Tun {
     }
 
     /// Reads a single packet from the TUN device.
-    pub fn recv(&self, data: &mut [u8]) -> io::Result<usize> {
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         unsafe {
-            match libc::read(self.fd, data.as_mut_ptr() as *mut libc::c_void, data.len()) {
+            match libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) {
                 r @ 0.. => Ok(r as usize),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -310,9 +310,9 @@ impl Tun {
     }
 
     /// Writes a single packet to the TUN device.
-    pub fn send(&self, data: &[u8]) -> io::Result<usize> {
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         unsafe {
-            match libc::write(self.fd, data.as_ptr() as *const libc::c_void, data.len()) {
+            match libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) {
                 r @ 0.. => Ok(r as usize),
                 _ => Err(io::Error::last_os_error()),
             }

@@ -8,7 +8,6 @@ use crate::linux::TapImpl;
 use crate::macos::TapImpl;
 
 /// A cross-platform TaP interface.
-#[cfg(not(target_os = "windows"))]
 pub struct Tap {
     inner: TapImpl,
 }

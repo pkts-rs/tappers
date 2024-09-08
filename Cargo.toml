@@ -2,7 +2,9 @@
 name = "tappers"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 description = "Cross-platform TUN and TAP interfaces"
-rust-version = "1.66" # `std::os::fd` stabilized
+# 1.66 - `std::os::fd` stabilized
+# 1.74 - `OsStr::as_encoded_bytes` stabilized
+rust-version = "1.74" 
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -21,7 +23,7 @@ wintun-runtime = ["wintun"]
 # Enables fallible run-time loading of tap-windows6 (default is load-time)
 tapwin6-runtime = ["tapwin6"]
 
-[target.'cfg(unix)'.dependencies]
+[dependencies]
 libc = { version = "0.2" }
 
 [target.'cfg(windows)'.dependencies]

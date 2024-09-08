@@ -17,16 +17,32 @@ pub mod tapwin6;
 #[cfg(all(target_os = "windows", feature = "wintun"))]
 pub mod wintun;
 
+#[cfg(not(target_os = "windows"))]
 mod tap;
+#[cfg(any(
+    not(target_os = "windows"),
+    all(target_os = "windows", feature = "wintun")
+))]
 mod tun;
 
+#[cfg(not(target_os = "windows"))]
 pub use tap::Tap;
+#[cfg(any(
+    not(target_os = "windows"),
+    all(target_os = "windows", feature = "wintun")
+))]
 pub use tun::Tun;
 
-use std::ffi::{CStr, OsStr, OsString};
+#[cfg(not(target_os = "windows"))]
+use std::ffi::CStr;
+use std::ffi::{OsStr, OsString};
 use std::fmt::{Debug, Display};
+#[cfg(not(target_os = "windows"))]
+use std::mem;
+#[cfg(target_os = "windows")]
+use std::ptr;
 use std::str::FromStr;
-use std::{array, io, mem};
+use std::{array, io};
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{ERROR_DEV_NOT_EXIST, ERROR_NO_DATA};
@@ -80,12 +96,11 @@ impl Interface {
     pub const MAX_INTERFACE_NAME_LEN: usize = INTERNAL_MAX_INTERFACE_NAME_LEN;
 
     /// A special catch-all interface identifier that specifies all operational interfaces.
+    #[cfg(not(target_os = "windows"))]
     pub fn any() -> io::Result<Self> {
-        #[cfg(not(target_os = "windows"))]
         let name = [0; Self::MAX_INTERFACE_NAME_LEN + 1];
 
         // Leave the interface name blank since this is the catch-all identifier
-
         Ok(Self {
             name,
             is_catchall: true,
@@ -115,7 +130,7 @@ impl Interface {
     #[cfg(target_os = "windows")]
     #[inline]
     fn new_inner(if_name: &impl AsRef<OsStr>) -> io::Result<Self> {
-        let utf16 = if_name.as_ref().encode_wide();
+        let mut utf16 = if_name.as_ref().encode_wide();
         let name = array::from_fn(|_| utf16.next().unwrap_or(0));
 
         let interface = Interface {
@@ -129,6 +144,7 @@ impl Interface {
     #[cfg(not(target_os = "windows"))]
     #[inline]
     fn new_inner(if_name: &impl AsRef<OsStr>) -> io::Result<Self> {
+        // Note: `as_encoded_bytes()` is the only think keeping MSRV as high as 1.74
         Self::new_raw(if_name.as_ref().as_encoded_bytes())
     }
 
@@ -182,7 +198,6 @@ impl Interface {
     }
 
     /// Retrieves the associated index of the network interface.
-    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn index(&self) -> io::Result<u32> {
         self.index_impl()

@@ -12,6 +12,9 @@ const NET_LINK_FAKE_LRO: *const i8 = b"net.link.fake.lro\0".as_ptr() as *const i
 const BPF_CREATE_ATTEMPTS: u32 = 1024;
 const BPF_BUFFER_LEN: i32 = 131072;
 
+#[allow(non_camel_case_types)]
+type u_quad_t = u64;
+
 // struct/const values to be removed once libc supports
 const SIOCAIFADDR: libc::c_ulong = 0x8040691a;
 const SIOCGIFCAP: libc::c_ulong = 0xc020695b;
@@ -79,6 +82,8 @@ const AF_SYS_CONTROL: libc::c_int = 2;
 const AF_LINK: libc::c_int = 18;
 const AF_NDRV: libc::c_int = 27;
 
+const SCOPE6_ID_MAX: libc::size_t = 16;
+
 #[repr(C)]
 #[allow(non_camel_case_types)]
 pub struct ifdrv {
@@ -94,7 +99,111 @@ pub struct ifdrv {
 struct sockaddr_ndrv {
     pub snd_len: libc::c_uchar,
     pub snd_family: libc::c_uchar,
-    pub snd_name: [libc::c_uchar; libc::IFNAMSIZ],
+    pub snd_name: [libc::c_uchar; libc::IFNAMSIZ as usize],
+}
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+struct in6_ifreq {
+    pub ifr_name: [libc::c_char; libc::IFNAMSIZ as usize],
+    pub ifr_ifru: __c_anonymous_ifr_ifru6,
+}
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+union __c_anonymous_ifr_ifru6 {
+    pub ifru_addr: libc::sockaddr_in6,
+    pub ifru_dstaddr: libc::sockaddr_in6,
+    pub ifru_flags: libc::c_int,
+    pub ifru_flags6: libc::c_int,
+    pub ifru_metrics: libc::c_int,
+    pub ifru_intval: libc::c_int,
+    pub ifru_data: *mut libc::c_char,
+    pub ifru_lifetime: in6_addrlifetime,
+    pub ifru_stat: in6_ifstat,
+    pub ifru_icmp6stat: icmp6_ifstat,
+    pub ifru_scope_id: [u32; SCOPE6_ID_MAX],
+}
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
+struct in6_addrlifetime {
+    pub ia6t_expire: libc::time_t,
+    pub ia6t_preferred: libc::time_t,
+    pub ia6t_vltime: u32,
+    pub ia6t_pltime: u32,
+}
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
+struct icmp6_ifstat {
+    pub ifs6_in_msg: u_quad_t,
+    pub ifs6_in_error: u_quad_t,
+    pub ifs6_in_dstunreach: u_quad_t,
+    pub ifs6_in_adminprohib: u_quad_t,
+    pub ifs6_in_timeexceed: u_quad_t,
+    pub ifs6_in_paramprob: u_quad_t,
+    pub ifs6_in_pkttoobig: u_quad_t,
+    pub ifs6_in_echo: u_quad_t,
+    pub ifs6_in_echoreply: u_quad_t,
+    pub ifs6_in_routersolicit: u_quad_t,
+    pub ifs6_in_routeradvert: u_quad_t,
+    pub ifs6_in_neighborsolicit: u_quad_t,
+    pub ifs6_in_neighboradvert: u_quad_t,
+    pub ifs6_in_redirect: u_quad_t,
+    pub ifs6_in_mldquery: u_quad_t,
+    pub ifs6_in_mldreport: u_quad_t,
+    pub ifs6_in_mlddone: u_quad_t,
+    pub ifs6_out_msg: u_quad_t,
+    pub ifs6_out_error: u_quad_t,
+    pub ifs6_out_dstunreach: u_quad_t,
+    pub ifs6_out_adminprohib: u_quad_t,
+    pub ifs6_out_timeexceed: u_quad_t,
+    pub ifs6_out_paramprob: u_quad_t,
+    pub ifs6_out_pkttoobig: u_quad_t,
+    pub ifs6_out_echo: u_quad_t,
+    pub ifs6_out_echoreply: u_quad_t,
+    pub ifs6_out_routersolicit: u_quad_t,
+    pub ifs6_out_routeradvert: u_quad_t,
+    pub ifs6_out_neighborsolicit: u_quad_t,
+    pub ifs6_out_neighboradvert: u_quad_t,
+    pub ifs6_out_redirect: u_quad_t,
+    pub ifs6_out_mldquery: u_quad_t,
+    pub ifs6_out_mldreport: u_quad_t,
+    pub ifs6_out_mlddone: u_quad_t,
+}
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
+struct in6_ifstat {
+    pub ifs6_in_receive: u_quad_t,
+    pub ifs6_in_hdrerr: u_quad_t,
+    pub ifs6_in_toobig: u_quad_t,
+    pub ifs6_in_noroute: u_quad_t,
+    pub ifs6_in_addrerr: u_quad_t,
+    pub ifs6_in_protounknown: u_quad_t,
+    pub ifs6_in_truncated: u_quad_t,
+    pub ifs6_in_discard: u_quad_t,
+    pub ifs6_in_deliver: u_quad_t,
+    pub ifs6_out_forward: u_quad_t,
+    pub ifs6_out_request: u_quad_t,
+    pub ifs6_out_discard: u_quad_t,
+    pub ifs6_out_fragok: u_quad_t,
+    pub ifs6_out_fragfail: u_quad_t,
+    pub ifs6_out_fragcreat: u_quad_t,
+    pub ifs6_reass_reqd: u_quad_t,
+    pub ifs6_reass_ok: u_quad_t,
+    pub ifs6_atmfrag_rcvd: u_quad_t,
+    pub ifs6_reass_fail: u_quad_t,
+    pub ifs6_in_mcast: u_quad_t,
+    pub ifs6_out_mcast: u_quad_t,
+    pub ifs6_cantfoward_icmp6: u_quad_t,
+    pub ifs6_addr_expiry_cnt: u_quad_t,
+    pub ifs6_pfx_expiry_cnt: u_quad_t,
+    pub ifs6_defrtr_expiry_cnt: u_quad_t,
 }
 
 /// Fake Ethernet ("feth") TAP device interface.
@@ -194,10 +303,12 @@ impl FethTap {
             ));
         }
 
-        let ndrv_fd = unsafe { libc::socket(AF_NDRV, libc::SOCK_RAW | libc::SOCK_CLOEXEC, 0) };
+        let ndrv_fd = unsafe { libc::socket(AF_NDRV, libc::SOCK_RAW, 0) };
         if ndrv_fd < 0 {
             return Err(io::Error::last_os_error());
         }
+
+        // TODO: set O_CLOEXEC on this and all other sockets
 
         // Create the primary `feth` device
 
@@ -283,7 +394,7 @@ impl FethTap {
 
         let mut bpf_fd = unsafe { libc::open(DEV_BPF, libc::O_RDWR | libc::O_CLOEXEC) };
         if bpf_fd < 0 {
-            let errno = unsafe { *libc::__errno_location() };
+            let errno = unsafe { *libc::__error() };
             if errno != libc::ENOENT {
                 // `/dev/bpf` device existed, but some other error occurred
                 let err = io::Error::last_os_error();
@@ -302,7 +413,7 @@ impl FethTap {
                     break;
                 }
 
-                let errno = unsafe { *libc::__errno_location() };
+                let errno = unsafe { *libc::__error() };
                 if errno != libc::EBUSY {
                     // Device wasn't in use, but some other error occurred
                     let err = io::Error::last_os_error();
@@ -380,7 +491,8 @@ impl FethTap {
         }
 
         // Do sniff packets even if they're not addressed specifically to us
-        if unsafe { libc::ioctl(bpf_fd, libc::BIOCPROMISC, ptr::addr_of_mut!(enable)) } != 0 {
+        if unsafe { libc::ioctl(bpf_fd, libc::BIOCPROMISC as u64, ptr::addr_of_mut!(enable)) } != 0
+        {
             let err = io::Error::last_os_error();
             Self::close_fd(bpf_fd);
             Self::destroy_iface(ndrv_fd, peer_iface);
@@ -418,7 +530,7 @@ impl FethTap {
         unsafe {
             match libc::sysctlbyname(
                 NET_LINK_FAKE_LRO,
-                ptr::addr_of_mut!(lro),
+                ptr::addr_of_mut!(lro) as *mut libc::c_void,
                 ptr::addr_of_mut!(lro_len),
                 ptr::null_mut(),
                 0,
@@ -441,7 +553,7 @@ impl FethTap {
                 NET_LINK_FAKE_LRO,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::addr_of_mut!(lro),
+                ptr::addr_of_mut!(lro) as *mut libc::c_void,
                 mem::size_of_val(&lro),
             ) {
                 0 => Ok(()),
@@ -492,7 +604,7 @@ impl FethTap {
 
         unsafe {
             match libc::ioctl(self.ndrv_fd, SIOCGIFDEVMTU, ptr::addr_of_mut!(req)) {
-                0 => Ok(unsafe { req.ifr_ifru.ifru_devmtu.ifdm_current as usize }),
+                0 => Ok(req.ifr_ifru.ifru_devmtu.ifdm_current as usize),
                 _ => Err(io::Error::last_os_error()),
             }
         }
@@ -512,7 +624,7 @@ impl FethTap {
 
         unsafe {
             match libc::ioctl(self.ndrv_fd, SIOCGIFDEVMTU, ptr::addr_of_mut!(req)) {
-                0 => Ok(unsafe { req.ifr_ifru.ifru_devmtu.ifdm_min as usize }),
+                0 => Ok(req.ifr_ifru.ifru_devmtu.ifdm_min as usize),
                 _ => Err(io::Error::last_os_error()),
             }
         }
@@ -532,7 +644,7 @@ impl FethTap {
 
         unsafe {
             match libc::ioctl(self.ndrv_fd, SIOCGIFDEVMTU, ptr::addr_of_mut!(req)) {
-                0 => Ok(unsafe { req.ifr_ifru.ifru_devmtu.ifdm_max as usize }),
+                0 => Ok(req.ifr_ifru.ifru_devmtu.ifdm_max as usize),
                 _ => Err(io::Error::last_os_error()),
             }
         }
@@ -566,7 +678,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -589,12 +701,11 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(self.bpf_fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0
-        {
+        if unsafe { libc::ioctl(self.bpf_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -611,12 +722,11 @@ impl FethTap {
             }
         }
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(self.bpf_fd, libc::SIOCSIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0
-        {
+        if unsafe { libc::ioctl(self.bpf_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -629,7 +739,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -651,18 +761,11 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe {
-            libc::ioctl(
-                self.ndrv_fd,
-                libc::SIOCGIFFLAGS,
-                ptr::addr_of_mut!(peer_req),
-            )
-        } != 0
-        {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -679,18 +782,11 @@ impl FethTap {
             }
         }
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe {
-            libc::ioctl(
-                self.ndrv_fd,
-                libc::SIOCSIFFLAGS,
-                ptr::addr_of_mut!(peer_req),
-            )
-        } != 0
-        {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -703,7 +799,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -725,18 +821,11 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe {
-            libc::ioctl(
-                self.ndrv_fd,
-                libc::SIOCGIFFLAGS,
-                ptr::addr_of_mut!(peer_req),
-            )
-        } != 0
-        {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -753,18 +842,11 @@ impl FethTap {
             }
         }
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe {
-            libc::ioctl(
-                self.ndrv_fd,
-                libc::SIOCSIFFLAGS,
-                ptr::addr_of_mut!(peer_req),
-            )
-        } != 0
-        {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -777,7 +859,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -797,7 +879,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -808,7 +890,7 @@ impl FethTap {
             }
         }
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -884,6 +966,16 @@ impl FethTap {
     }
     */
 
+    /// Indicates whether nonblocking is enabled for `read` and `write` operations on the TAP device.
+    pub fn nonblocking(&self) -> io::Result<bool> {
+        let flags = unsafe { libc::fcntl(self.ndrv_fd, libc::F_GETFL) };
+        if flags < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(flags & libc::O_NONBLOCK > 0)
+    }
+
     /// Sets nonblocking mode for `read` and `write` operations on the TUN device.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         let nonblocking = match nonblocking {
@@ -947,6 +1039,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
+                    sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sa_data: [0i8; 14],
                 },
             },
@@ -995,6 +1088,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
+                    sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sa_data: [0i8; 14],
                 },
             },
@@ -1013,7 +1107,7 @@ impl FethTap {
         }
 
         unsafe {
-            match libc::ioctl(self.ndrv_fd, libc::SIOCADDMULTI, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(self.ndrv_fd, SIOCADDMULTI, ptr::addr_of_mut!(req)) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -1043,6 +1137,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
+                    sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sa_data: [0i8; 14],
                 },
             },
@@ -1061,7 +1156,7 @@ impl FethTap {
         }
 
         unsafe {
-            match libc::ioctl(self.ndrv_fd, libc::SIOCDELMULTI, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(self.ndrv_fd, SIOCDELMULTI, ptr::addr_of_mut!(req)) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -1077,10 +1172,11 @@ impl FethTap {
                 }
 
                 let addr = libc::sockaddr_in {
-                    sin_family: libc::AF_INET as u16,
+                    sin_family: libc::AF_INET as u8,
+                    sin_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sin_port: 0,
                     sin_addr: libc::in_addr {
-                        s_addr: v4_addr.to_bits(),
+                        s_addr: v4_addr.into(),
                     },
                     sin_zero: [0; 8],
                 };
@@ -1090,6 +1186,7 @@ impl FethTap {
                     ifr_ifru: libc::__c_anonymous_ifr_ifru {
                         ifru_addr: libc::sockaddr {
                             sa_family: 0,
+                            sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
                             sa_data: [0i8; 14],
                         },
                     },
@@ -1113,16 +1210,12 @@ impl FethTap {
                 unsafe {
                     match libc::ioctl(self.ndrv_fd, SIOCAIFADDR, ptr::addr_of_mut!(req)) {
                         0 => {
-                            unsafe {
-                                libc::close(inet_fd);
-                            }
+                            libc::close(inet_fd);
                             Ok(())
                         }
                         _ => {
                             let err = io::Error::last_os_error();
-                            unsafe {
-                                libc::close(inet_fd);
-                            }
+                            libc::close(inet_fd);
                             Err(err)
                         }
                     }
@@ -1135,11 +1228,12 @@ impl FethTap {
                 }
 
                 // TODO: do flowinfo or scope_id have any significance?
-                let mut req = libc::in6_ifreq {
+                let mut req = in6_ifreq {
                     ifr_name: self.iface.name_raw_i8(),
-                    ifr_ifru: libc::__c_anonymous_ifr_ifru6 {
+                    ifr_ifru: __c_anonymous_ifr_ifru6 {
                         ifru_addr: libc::sockaddr_in6 {
-                            sin6_family: libc::AF_INET6 as u16,
+                            sin6_family: libc::AF_INET6 as u8,
+                            sin6_len: mem::size_of::<libc::sockaddr_in6>() as u8,
                             sin6_port: 0,
                             sin6_flowinfo: 0,
                             sin6_addr: libc::in6_addr {
@@ -1176,10 +1270,11 @@ impl FethTap {
                 }
 
                 let addr = libc::sockaddr_in {
-                    sin_family: libc::AF_INET as u16,
+                    sin_family: libc::AF_INET as u8,
+                    sin_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sin_port: 0,
                     sin_addr: libc::in_addr {
-                        s_addr: v4_addr.to_bits(),
+                        s_addr: v4_addr.into(),
                     },
                     sin_zero: [0; 8],
                 };
@@ -1189,6 +1284,7 @@ impl FethTap {
                     ifr_ifru: libc::__c_anonymous_ifr_ifru {
                         ifru_addr: libc::sockaddr {
                             sa_family: 0,
+                            sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
                             sa_data: [0i8; 14],
                         },
                     },
@@ -1212,16 +1308,12 @@ impl FethTap {
                 unsafe {
                     match libc::ioctl(inet_fd, SIOCDIFADDR, ptr::addr_of_mut!(req)) {
                         0 => {
-                            unsafe {
-                                libc::close(inet_fd);
-                            }
+                            libc::close(inet_fd);
                             Ok(())
                         }
                         _ => {
                             let err = io::Error::last_os_error();
-                            unsafe {
-                                libc::close(inet_fd);
-                            }
+                            libc::close(inet_fd);
                             Err(err)
                         }
                     }
@@ -1234,11 +1326,12 @@ impl FethTap {
                 }
 
                 // TODO: do flowinfo or scope_id have any significance?
-                let mut req = libc::in6_ifreq {
+                let mut req = in6_ifreq {
                     ifr_name: self.iface.name_raw_i8(),
-                    ifr_ifru: libc::__c_anonymous_ifr_ifru6 {
+                    ifr_ifru: __c_anonymous_ifr_ifru6 {
                         ifru_addr: libc::sockaddr_in6 {
-                            sin6_family: libc::AF_INET6 as u16,
+                            sin6_family: libc::AF_INET6 as u8,
+                            sin6_len: mem::size_of::<libc::sockaddr_in>() as u8,
                             sin6_port: 0,
                             sin6_flowinfo: 0,
                             sin6_addr: libc::in6_addr {
@@ -1277,12 +1370,13 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
+                    sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sa_data: [0i8; 14],
                 },
             },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFNETMASK, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFNETMASK, ptr::addr_of_mut!(req)) } != 0 {
             let err = io::Error::last_os_error();
             unsafe { libc::close(inet_fd) };
             return Err(err);
@@ -1294,7 +1388,8 @@ impl FethTap {
         );
 
         let mut addr = libc::sockaddr_in {
-            sin_family: libc::AF_INET as u16,
+            sin_family: libc::AF_INET as u8,
+            sin_len: mem::size_of::<libc::sockaddr_in>() as u8,
             sin_port: 0,
             sin_addr: libc::in_addr { s_addr: 0 },
             sin_zero: [0; 8],
@@ -1310,7 +1405,7 @@ impl FethTap {
             libc::close(inet_fd);
         }
 
-        Ok(Ipv4Addr::from_bits(addr.sin_addr.s_addr))
+        Ok(Ipv4Addr::from(addr.sin_addr.s_addr.to_be_bytes())) // TODO: verify correct endianness
     }
 
     pub fn set_v4_netmask(&self, addr: Ipv4Addr) -> io::Result<()> {
@@ -1320,10 +1415,11 @@ impl FethTap {
         }
 
         let addr = libc::sockaddr_in {
-            sin_family: libc::AF_INET as u16,
+            sin_family: libc::AF_INET as u8,
+            sin_len: mem::size_of::<libc::sockaddr_in>() as u8,
             sin_port: 0,
             sin_addr: libc::in_addr {
-                s_addr: addr.to_bits(),
+                s_addr: addr.into(),
             },
             sin_zero: [0; 8],
         };
@@ -1333,6 +1429,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
+                    sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sa_data: [0i8; 14],
                 },
             },
@@ -1350,7 +1447,7 @@ impl FethTap {
         }
 
         unsafe {
-            match libc::ioctl(self.ndrv_fd, libc::SIOCSIFNETMASK, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(self.ndrv_fd, SIOCSIFNETMASK, ptr::addr_of_mut!(req)) {
                 0 => {
                     libc::close(inet_fd);
                     Ok(())
@@ -1375,12 +1472,13 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
+                    sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sa_data: [0i8; 14],
                 },
             },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::SIOCGIFDSTADDR, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFDSTADDR, ptr::addr_of_mut!(req)) } != 0 {
             let err = io::Error::last_os_error();
             unsafe { libc::close(inet_fd) };
             return Err(err);
@@ -1392,7 +1490,8 @@ impl FethTap {
         );
 
         let mut addr = libc::sockaddr_in {
-            sin_family: libc::AF_INET as u16,
+            sin_family: libc::AF_INET as u8,
+            sin_len: mem::size_of::<libc::sockaddr_in>() as u8,
             sin_port: 0,
             sin_addr: libc::in_addr { s_addr: 0 },
             sin_zero: [0; 8],
@@ -1408,7 +1507,7 @@ impl FethTap {
             libc::close(inet_fd);
         }
 
-        Ok(Ipv4Addr::from_bits(addr.sin_addr.s_addr))
+        Ok(Ipv4Addr::from(addr.sin_addr.s_addr.to_be_bytes())) // TODO: verify correct endianness
     }
 
     pub fn set_dst_addr(&self, addr: Ipv4Addr) -> io::Result<()> {
@@ -1418,10 +1517,11 @@ impl FethTap {
         }
 
         let addr = libc::sockaddr_in {
-            sin_family: libc::AF_INET as u16,
+            sin_family: libc::AF_INET as u8,
+            sin_len: mem::size_of::<libc::sockaddr_in>() as u8,
             sin_port: 0,
             sin_addr: libc::in_addr {
-                s_addr: addr.to_bits(),
+                s_addr: addr.into(),
             },
             sin_zero: [0; 8],
         };
@@ -1431,6 +1531,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
+                    sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sa_data: [0i8; 14],
                 },
             },
@@ -1448,7 +1549,7 @@ impl FethTap {
         }
 
         unsafe {
-            match libc::ioctl(self.ndrv_fd, libc::SIOCSIFDSTADDR, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(self.ndrv_fd, SIOCSIFDSTADDR, ptr::addr_of_mut!(req)) {
                 0 => {
                     libc::close(inet_fd);
                     Ok(())
@@ -1528,20 +1629,16 @@ impl FethTap {
         let mut addrs = Vec::new();
 
         while !data.is_empty() {
-            let Some((hdr_slice, rem_data)) =
-                data.split_at_checked(mem::size_of::<libc::ifa_msghdr>())
-            else {
-                debug_assert!(false);
-                break;
-            };
+            let (hdr_slice, rem_data) = data.split_at(mem::size_of::<libc::ifa_msghdr>());
 
             let (_, hdr_slice, _) = unsafe { hdr_slice.align_to::<libc::ifa_msghdr>() };
             let msghdr = hdr_slice.first().unwrap(); // TODO: handle alignment errors gracefully?
 
             let addr_end = msghdr.ifam_msglen as usize - mem::size_of::<libc::rt_msghdr>();
-            let Some((mut addr_data, rem_data)) = rem_data.split_at_checked(addr_end) else {
+            if addr_end > rem_data.len() {
                 break;
-            };
+            }
+            let (mut addr_data, rem_data) = rem_data.split_at(addr_end);
             data = rem_data;
 
             if msghdr.ifam_version != Self::RTM_VERSION
@@ -1573,26 +1670,56 @@ impl FethTap {
 
             match addr_family {
                 libc::AF_INET => {
-                    let offset = mem::offset_of!(libc::sockaddr_in, sin_addr)
-                        + mem::offset_of!(libc::in_addr, s_addr);
-                    let addr_bytes = addr_data[offset..offset + 4].try_into().unwrap();
-                    addrs.push(IpAddr::V4(Ipv4Addr::from_bits(u32::from_be_bytes(
-                        addr_bytes,
-                    ))));
+                    // TODO: alignment *seems* like it would work out here...
+                    let in_addr_bytes: [u8; mem::size_of::<libc::sockaddr_in>()] = addr_data
+                        [2..2 + mem::size_of::<libc::sockaddr_in>()]
+                        .try_into()
+                        .unwrap();
+                    unsafe {
+                        let in_addr: libc::sockaddr_in = mem::transmute(in_addr_bytes);
+                        addrs.push(IpAddr::V4(Ipv4Addr::from(in_addr.sin_addr.s_addr)));
+                    }
                 }
                 libc::AF_INET6 => {
-                    let offset = mem::offset_of!(libc::sockaddr_in6, sin6_addr)
-                        + mem::offset_of!(libc::in6_addr, s6_addr);
-                    let addr_bytes = addr_data[offset..offset + 16].try_into().unwrap();
-                    addrs.push(IpAddr::V6(Ipv6Addr::from_bits(u128::from_be_bytes(
-                        addr_bytes,
-                    ))));
+                    let in6_addr_bytes: [u8; mem::size_of::<libc::sockaddr_in6>()] = addr_data
+                        [2..2 + mem::size_of::<libc::sockaddr_in6>()]
+                        .try_into()
+                        .unwrap();
+                    unsafe {
+                        let in6_addr: libc::sockaddr_in6 =
+                            unsafe { mem::transmute(in6_addr_bytes) };
+                        addrs.push(IpAddr::V6(Ipv6Addr::from(in6_addr.sin6_addr.s6_addr)));
+                    }
                 }
-                _ => (), // We exclude link-layer (and other) addresses here
+                _ => (), // We ignore link-layer (and other) addresses here
             }
         }
 
         Ok(addrs)
+    }
+
+    #[inline]
+    pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+        unsafe {
+            match libc::write(self.ndrv_fd, buf.as_ptr() as *mut libc::c_void, buf.len()) {
+                s @ 0.. => Ok(s as usize),
+                _ => Err(io::Error::last_os_error()),
+            }
+        }
+    }
+
+    #[inline]
+    pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        unsafe {
+            match libc::read(
+                self.ndrv_fd,
+                buf.as_mut_ptr() as *mut libc::c_void,
+                buf.len(),
+            ) {
+                r @ 0.. => Ok(r as usize),
+                _ => Err(io::Error::last_os_error()),
+            }
+        }
     }
 
     pub fn destroy(self) -> io::Result<()> {

@@ -49,6 +49,13 @@ if [ "$OS" = "windows" ]; then
       cp -f "/C/ProgramData/Chocolatey/lib/mingw/tools/install/mingw$ARCH_BITS/$ARCH-w64-mingw32/lib/$i" "$(rustc --print sysroot)/lib/rustlib/$TARGET/lib"
     done
   fi
+
+  # Install Wintun
+  echo "Install Wintun"
+  curl.exe -o wintun.zip https://www.wintun.net/builds/wintun-0.14.1.zip
+  powershell.exe -NoP -NonI -Command "Expand-Archive './wintun.zip' './'"
+  cp -f "./wintun/bin/amd64/wintun.dll" "./"
+  rm -rf "./wintun"
 fi
 
 echo "Query rust and cargo versions"

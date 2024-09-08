@@ -7,18 +7,18 @@
 `tappers` provides both platform-specific and cross-platform APIs for managing TUN and TAP
 devices. It supports the following features for each platform:
 
-| Platform | TUN                   | TAP                   | Kernel BPF           |
-| -------- | --------------------- | --------------------- | -------------------- |
-| Linux    | :white_check_mark:    | :white_check_mark:    | :white_large_square: |
-| MacOS    | :white_check_mark:    | :white_check_mark:    | :white_large_square: |
-| Windows  | :white_check_mark:    | :white_large_square:  | N/A                  |
-| FreeBSD  | :white_large_square:  | :white_large_square:  | :white_large_square: |
-| OpenBSD  | :white_large_square:  | :white_large_square:  | :white_large_square: |
-| NetBSD   | :white_large_square:  | :white_large_square:  | :white_large_square: |
-| Solaris  | :white_large_square:  | :white_large_square:  | :white_large_square: |
-| IllumOS  | :white_large_square:  | :white_large_square:  | :white_large_square: |
-| Android  | :white_large_square:* | :white_large_square:* | N/A                  |
-| iOS      | :white_large_square:  | N/A                   | N/A                  |
+| Platform | TUN  | TAP | Kernel BPF |
+| -------- | ---- | --- | ---------- |
+| Linux    | ✅   | ✅  | ⬜         |
+| MacOS    | ✅   | ✅  | ⬜         |
+| Windows  | ✅   | ⬜  | N/A        |
+| FreeBSD  | ⬜   | ⬜  | ⬜         |
+| OpenBSD  | ⬜   | ⬜  | ⬜         |
+| NetBSD   | ⬜   | ⬜  | ⬜         |
+| Solaris  | ⬜   | ⬜  | ⬜         |
+| IllumOS  | ⬜   | ⬜  | ⬜         |
+| Android  | ⬜ * | ⬜* | N/A        |
+| iOS      | ⬜   | N/A | N/A        |
 
 `N/A` - platform does not support specified feature
 
@@ -28,23 +28,23 @@ Note that this library is currently a work in progress--more platforms will be s
 
 # Feature Comparison to Other Libraries
 
-| Feature                                     | `tappers`            | `tun`                | `tun2`               | `tun-tap`            | `utuntap`            | `tokio-tun`          |
-| ------------------------------------------- | -------------------- | -------------------- | -------------------- | -------------------- | -------------------- | -------------------- |
-| Consistent packet format across platforms   | :heavy-check-mark:   | :white_large_square: | :white_large_square: | Linux only           | :white_large_square: | Linux only           |
-| Uses no subprocess commands (only `ioctl`s) | :white_check_mark:   | :white_check_mark:   | :white_large_square: | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   |
-| Supports multiple TUN/TAP creation          | :white_check_mark:   | Not on Windows       | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   |
-| IPv4 routing support                        | Planned              | :white_check_mark:   | :white_check_mark:   | :white_large_square: | :white_large_square: | :white_check_mark:   |
-| IPv6 routing support                        | Planned              | :white_large_square: | Linux only           | :white_large_square: | :white_large_square: | :white_large_square: |
-| Unit testing for `TUN` devices              | Planned              | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_large_square: |
-| Unit testing for `TAP` devices              | Planned              | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: |
-| Cross-platform CI tests                     | Planned              | :white_large_square: | :white_large_square: | N/A                  | :white_large_square: | N/A                  |
-| TUN/TAP support for Linux                   | :white_check_mark:   | TUN only             | TUN only             | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   |
-| TUN/TAP support for MacOS                   | :white_check_mark:   | TUN only             | TUN only             | :white_large_square: | TUN only             | :white_large_square: |
-| TUN/TAP support for Windows                 | TUN only             | TUN only             | TUN only             | :white_large_square: | :white_large_square: | :white_large_square: |
-| TUN/TAP support for *BSD                    | Planned              | :white_large_square: | FreeBSD/TUN only     | :white_large_square: | OpenBSD              | :white_large_square: |
-| TUN/TAP support for Solaris/IllumOS         | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: |
-| non-`async` support                         | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_large_square: |
-| `async` support                             | Planned              | :white_check_mark:   | Unix only            | :white_check_mark:   | :white_large_square: | :white_check_mark:   |
+| Feature                                     | `tappers` | `tun`          | `tun2`           | `tun-tap`  | `utuntap` | `tokio-tun` |
+| ------------------------------------------- | --------- | -------------- | ---------------- | ---------- | --------- | ----------- |
+| Consistent packet format across platforms   | ✅        | ⬜             | ⬜               | Linux only | ⬜        | Linux only  |
+| Uses no subprocess commands (only `ioctl`s) | ✅        | ✅             | ⬜               | ✅         | ✅        | ✅          |
+| Supports multiple TUN/TAP creation          | ✅        | Not on Windows | ✅               | ✅         | ✅        | ✅          |
+| IPv4 routing support                        | Planned   | ✅             | ✅               | ⬜         | ⬜        | ✅          |
+| IPv6 routing support                        | Planned   | ⬜             | Linux only       | ⬜         | ⬜        | ⬜          |
+| Unit testing for `TUN` devices              | Planned   | ✅             | ✅               | ✅         | ✅        | ⬜          |
+| Unit testing for `TAP` devices              | Planned   | ⬜             | ⬜               | ⬜         | ⬜        | ⬜          |
+| Cross-platform CI tests                     | Planned   | ⬜             | ⬜               | N/A        | ⬜        | N/A         |
+| TUN/TAP support for Linux                   | ✅        | TUN only       | TUN only         | ✅         | ✅        | ✅          |
+| TUN/TAP support for MacOS                   | ✅        | TUN only       | TUN only         | ⬜         | TUN only  | ⬜          |
+| TUN/TAP support for Windows                 | TUN only  | TUN only       | TUN only         | ⬜         | ⬜        | ⬜          |
+| TUN/TAP support for *BSD                    | Planned   | ⬜             | FreeBSD/TUN only | ⬜         | OpenBSD   | ⬜          |
+| TUN/TAP support for Solaris/IllumOS         | ⬜        | ⬜             | ⬜               | ⬜         | ⬜        | ⬜          |
+| non-`async` support                         | ✅        | ✅             | ✅               | ✅         | ✅        | ⬜          |
+| `async` support                             | Planned   | ✅             | Unix only        | ✅         | ⬜        | ✅          |
 
 # Additional Notes on Platform Support
 
@@ -102,13 +102,13 @@ All `Tun` and `Tap` types implement synchronous blocking/nonblocking `send()` an
 In addition to this, `tappers` will aim to provide first-class support for the following `async`
 runtimes:
 
-| `async` Runtime | Supported?           |
-| --------------- | -------------        |
-| `mio`           | :white_large_square: |
-| `tokio`         | :white_large_square: |
-| `futures`       | :white_large_square: |
-| `async-std`     | Via `futures`        |
-| `smol`          | Via `futures`        |
+| `async` Runtime | Supported?    |
+| --------------- | ------------- |
+| `mio`           | ⬜            |
+| `tokio`         | ⬜            |
+| `futures`       | ⬜            |
+| `async-std`     | Via `futures` |
+| `smol`          | Via `futures` |
 
 Note that this library is currently a work in progress--`async` runtimes will soon be supported.
 

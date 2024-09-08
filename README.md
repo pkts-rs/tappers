@@ -9,9 +9,9 @@ devices. It supports the following features for each platform:
 
 | Platform | TUN                   | TAP                   | Kernel BPF           |
 | -------- | --------------------- | --------------------- | -------------------- |
-| Linux    | :heavy_check_mark:    | :heavy_check_mark:    | :white_large_square: |
-| MacOS    | :heavy_check_mark:    | :heavy_check_mark:    | :white_large_square: |
-| Windows  | :heavy_check_mark:    | :white_large_square:  | N/A                  |
+| Linux    | :white_check_mark:    | :white_check_mark:    | :white_large_square: |
+| MacOS    | :white_check_mark:    | :white_check_mark:    | :white_large_square: |
+| Windows  | :white_check_mark:    | :white_large_square:  | N/A                  |
 | FreeBSD  | :white_large_square:  | :white_large_square:  | :white_large_square: |
 | OpenBSD  | :white_large_square:  | :white_large_square:  | :white_large_square: |
 | NetBSD   | :white_large_square:  | :white_large_square:  | :white_large_square: |
@@ -31,20 +31,20 @@ Note that this library is currently a work in progress--more platforms will be s
 | Feature                                     | `tappers`            | `tun`                | `tun2`               | `tun-tap`            | `utuntap`            | `tokio-tun`          |
 | ------------------------------------------- | -------------------- | -------------------- | -------------------- | -------------------- | -------------------- | -------------------- |
 | Consistent packet format across platforms   | :heavy-check-mark:   | :white_large_square: | :white_large_square: | Linux only           | :white_large_square: | Linux only           |
-| Uses no subprocess commands (only `ioctl`s) | :heavy_check_mark:   | :heavy_check_mark:   | :white_large_square: | :heavy_check_mark:   | :heavy_check_mark:   | :heavy_check_mark:   |
-| Supports multiple TUN/TAP creation          | :heavy_check_mark:   | Not on Windows       | :heavy_check_mark:   | :heavy_check_mark:   | :heavy_check_mark:   | :heavy_check_mark:   |
-| IPv4 routing support                        | Planned              | :heavy_check_mark:   | :heavy_check_mark:   | :white_large_square: | :white_large_square: | :heavy_check_mark:   |
+| Uses no subprocess commands (only `ioctl`s) | :white_check_mark:   | :white_check_mark:   | :white_large_square: | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   |
+| Supports multiple TUN/TAP creation          | :white_check_mark:   | Not on Windows       | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   |
+| IPv4 routing support                        | Planned              | :white_check_mark:   | :white_check_mark:   | :white_large_square: | :white_large_square: | :white_check_mark:   |
 | IPv6 routing support                        | Planned              | :white_large_square: | Linux only           | :white_large_square: | :white_large_square: | :white_large_square: |
-| Unit testing for `TUN` devices              | Planned              | :heavy_check_mark:   | :heavy_check_mark:   | :heavy_check_mark:   | :heavy_check_mark:   | :white_large_square: |
+| Unit testing for `TUN` devices              | Planned              | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_large_square: |
 | Unit testing for `TAP` devices              | Planned              | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: |
 | Cross-platform CI tests                     | Planned              | :white_large_square: | :white_large_square: | N/A                  | :white_large_square: | N/A                  |
-| TUN/TAP support for Linux                   | :heavy_check_mark:   | TUN only             | TUN only             | :heavy_check_mark:   | :heavy_check_mark:   | :heavy_check_mark:   |
-| TUN/TAP support for MacOS                   | :heavy_check_mark:   | TUN only             | TUN only             | :white_large_square: | TUN only             | :white_large_square: |
+| TUN/TAP support for Linux                   | :white_check_mark:   | TUN only             | TUN only             | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   |
+| TUN/TAP support for MacOS                   | :white_check_mark:   | TUN only             | TUN only             | :white_large_square: | TUN only             | :white_large_square: |
 | TUN/TAP support for Windows                 | TUN only             | TUN only             | TUN only             | :white_large_square: | :white_large_square: | :white_large_square: |
 | TUN/TAP support for *BSD                    | Planned              | :white_large_square: | FreeBSD/TUN only     | :white_large_square: | OpenBSD              | :white_large_square: |
 | TUN/TAP support for Solaris/IllumOS         | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: | :white_large_square: |
-| non-`async` support                         | :heavy_check_mark:   | :heavy_check_mark:   | :heavy_check_mark:   | :heavy_check_mark:   | :heavy_check_mark:   | :white_large_square: |
-| `async` support                             | Planned              | :heavy_check_mark:   | Unix only            | :heavy_check_mark:   | :white_large_square: | :heavy_check_mark:   |
+| non-`async` support                         | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_check_mark:   | :white_large_square: |
+| `async` support                             | Planned              | :white_check_mark:   | Unix only            | :white_check_mark:   | :white_large_square: | :white_check_mark:   |
 
 # Additional Notes on Platform Support
 

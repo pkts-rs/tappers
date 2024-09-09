@@ -84,6 +84,8 @@ const AF_NDRV: libc::c_int = 27;
 
 const SCOPE6_ID_MAX: libc::size_t = 16;
 
+const IF_FAKE_MEDIA_LIST_MAX: usize = 27;
+
 #[repr(C)]
 #[allow(non_camel_case_types)]
 pub struct ifdrv {
@@ -204,6 +206,32 @@ struct in6_ifstat {
     pub ifs6_addr_expiry_cnt: u_quad_t,
     pub ifs6_pfx_expiry_cnt: u_quad_t,
     pub ifs6_defrtr_expiry_cnt: u_quad_t,
+}
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+struct if_fake_request {
+    iffr_reserved: [u64; 4],
+    iffr_u: __c_anonymous_iffr_u,
+}
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+union __c_anonymous_iffr_u {
+    iffru_buf: [libc::c_char; 128],
+    iffru_media: if_fake_media,
+    iffru_peer_name: [libc::c_char; libc::IFNAMSIZ],
+    iffru_dequeue_stall: u32,
+}
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
+struct if_fake_media {
+    iffm_current: i32,
+    iffm_count: u32,
+    iffm_reserved: [u32; 3],
+    iffm_list: [i32; IF_FAKE_MEDIA_LIST_MAX],
 }
 
 /// Fake Ethernet ("feth") TAP device interface.
@@ -345,11 +373,18 @@ impl FethTap {
 
         // Peer the two devices together
 
+        let mut fake_req = if_fake_request {
+            iffr_reserved: [0u64; 4],
+            iffr_u: __c_anonymous_iffr_u {
+                iffru_peer_name: peer_iface.name_raw_i8(),
+            },
+        };
+
         let mut spec = ifdrv {
             ifd_name: req.ifr_name,
             ifd_cmd: IF_FAKE_S_CMD_SET_PEER,
-            ifd_len: mem::size_of_val(&peer_req.ifr_name),
-            ifd_data: ptr::addr_of_mut!(peer_req.ifr_name) as *mut libc::c_void,
+            ifd_len: mem::size_of_val(&fake_req),
+            ifd_data: ptr::addr_of_mut!(fake_req) as *mut libc::c_void,
         };
 
         if unsafe { libc::ioctl(ndrv_fd, SIOCSDRVSPEC, ptr::addr_of_mut!(spec)) } != 0 {
@@ -696,28 +731,34 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
+        /*
         let mut peer_req = libc::ifreq {
             ifr_name: self.peer_iface.name_raw_i8(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
+        */
 
         if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
+        /*
         if unsafe { libc::ioctl(self.bpf_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
+        */
+
+        // TODO: This ^ was failing with EINVAL. Is it correct to not call it?
 
         unsafe {
             match state {
                 DeviceState::Down => {
                     req.ifr_ifru.ifru_flags &= !(libc::IFF_UP as i16);
-                    peer_req.ifr_ifru.ifru_flags &= !(libc::IFF_UP as i16);
+                    // peer_req.ifr_ifru.ifru_flags &= !(libc::IFF_UP as i16);
                 }
                 DeviceState::Up => {
                     req.ifr_ifru.ifru_flags |= libc::IFF_UP as i16;
-                    peer_req.ifr_ifru.ifru_flags |= libc::IFF_UP as i16;
+                    // peer_req.ifr_ifru.ifru_flags |= libc::IFF_UP as i16;
                 }
             }
         }
@@ -726,9 +767,11 @@ impl FethTap {
             return Err(io::Error::last_os_error());
         }
 
+        /*
         if unsafe { libc::ioctl(self.bpf_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
+        */
 
         Ok(())
     }

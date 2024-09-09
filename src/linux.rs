@@ -168,54 +168,54 @@ impl TunImpl {
 }
 
 pub(crate) struct TapImpl {
-    tun: Tap,
+    tap: Tap,
 }
 
 impl TapImpl {
     #[inline]
     pub fn new() -> io::Result<Self> {
-        Ok(Self { tun: Tap::new()? })
+        Ok(Self { tap: Tap::new()? })
     }
 
     #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
         Ok(Self {
-            tun: Tap::new_named(if_name)?,
+            tap: Tap::new_named(if_name)?,
         })
     }
 
     #[inline]
     pub fn name(&self) -> io::Result<Interface> {
-        self.tun.name()
+        self.tap.name()
     }
 
     #[inline]
     pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
-        self.tun.set_state(state)
+        self.tap.set_state(state)
     }
 
     #[inline]
     pub fn mtu(&self) -> io::Result<usize> {
-        self.tun.mtu()
+        self.tap.mtu()
     }
 
     #[inline]
     pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
-        self.tun.set_nonblocking(nonblocking)
+        self.tap.set_nonblocking(nonblocking)
     }
 
     #[inline]
     pub fn nonblocking(&self) -> io::Result<bool> {
-        self.tun.nonblocking()
+        self.tap.nonblocking()
     }
 
     #[inline]
     pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.tun.send(buf)
+        self.tap.send(buf)
     }
 
     #[inline]
     pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.tun.recv(buf)
+        self.tap.recv(buf)
     }
 }

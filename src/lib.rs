@@ -37,8 +37,6 @@ pub use tun::Tun;
 use std::ffi::CStr;
 use std::ffi::{OsStr, OsString};
 use std::fmt::{Debug, Display};
-#[cfg(not(target_os = "windows"))]
-use std::mem;
 #[cfg(target_os = "windows")]
 use std::ptr;
 use std::str::FromStr;
@@ -249,7 +247,7 @@ impl Interface {
 
     #[cfg(not(target_os = "windows"))]
     pub fn name_raw_i8(&self) -> [i8; Self::MAX_INTERFACE_NAME_LEN + 1] {
-        unsafe { mem::transmute_copy(&self.name) }
+        array::from_fn(|i| self.name[i] as i8)
     }
 
     /// Returns the name associated with the given interface in C-string format.

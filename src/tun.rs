@@ -100,3 +100,31 @@ impl Tun {
         self.inner.read_handle()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unique_names() {
+        let tun1 = Tun::new().unwrap();
+        let tun2 = Tun::new().unwrap();
+        let tun3 = Tun::new().unwrap();
+
+        let tun1_name = tun1.name().unwrap();
+        let tun2_name = tun2.name().unwrap();
+        let tun3_name = tun3.name().unwrap();
+
+        assert!(tun1_name != tun2_name);
+        assert!(tun1_name != tun3_name);
+        assert!(tun2_name != tun3_name);
+    }
+
+    #[test]
+    fn up_down() {
+        let mut tun1 = Tun::new().unwrap();
+
+        tun1.set_up().unwrap();
+        tun1.set_down().unwrap();
+    }
+}

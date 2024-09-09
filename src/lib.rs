@@ -195,6 +195,30 @@ impl Interface {
         }
     }
 
+    /// Indicates whether the interface currently exists on the system.
+    #[inline]
+    pub fn exists(&self) -> io::Result<bool> {
+        match self.index() {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                let not_found = e.kind() == io::ErrorKind::NotFound;
+
+                #[cfg(target_os = "linux")]
+                let not_found_sys = e.raw_os_error() == Some(libc::ENODEV);
+                #[cfg(target_os = "windows")]
+                let not_found_sys = false;
+                #[cfg(target_os = "macos")]
+                let not_found_sys = e.raw_os_error() == Some(libc::ENXIO);
+
+                if not_found || not_found_sys {
+                    Ok(false)
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
+
     /// Retrieves the associated index of the network interface.
     #[inline]
     pub fn index(&self) -> io::Result<u32> {

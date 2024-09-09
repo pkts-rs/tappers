@@ -142,8 +142,7 @@ impl Interface {
     #[cfg(not(target_os = "windows"))]
     #[inline]
     fn new_inner(if_name: &impl AsRef<OsStr>) -> io::Result<Self> {
-        // Note: `as_encoded_bytes()` is the only think keeping MSRV as high as 1.74
-        Self::new_raw(if_name.as_ref().as_encoded_bytes())
+        Self::new_raw(if_name.as_ref().as_bytes())
     }
 
     #[cfg(not(target_os = "windows"))]

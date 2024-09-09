@@ -237,7 +237,7 @@ struct if_fake_media {
 /// Fake Ethernet ("feth") TAP device interface.
 ///
 /// Apple does not support conventional TAP APIs, so this implementation instead uses the somewhat
-/// undocumented `IF_FAKE` or `feth` interface to act as a link-layer virtual network.
+/// undocumented `IF_FAKE` or "feth" interface to act as a link-layer virtual network.
 pub struct FethTap {
     iface: Interface,
     peer_iface: Interface,
@@ -248,29 +248,9 @@ pub struct FethTap {
 }
 
 impl FethTap {
-    /*
-    /// Creates a new TAP device.
-    ///
-    /// The interface name associated with this TAP device will be "feth" with a device number
-    /// appended (e.g. "feth0", "feth1"), and can be retrieved via the [`name()`](Self::name)
-    /// method.
-    pub fn new() -> io::Result<Self> {
-        for i in 0..FETH_CREATE_ATTEMPTS {
-            let if_number = i * 2;
-            let peer_if_number = if_number + 1;
-
-            match Self::new_numbered(if_number, peer_if_number) {
-                Ok(t) => return Ok(t),
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists || e.raw_os_error() == Some(libc::EBUSY) => (), // TODO: replace with ResourceBusy once stable
-                Err(e) => return Err(e),
-            }
-
-            // One of the interface numbers was either taken or in the process of being torn down
-        }
-
-        Err(io::Error::new(io::ErrorKind::AlreadyExists, "could not find any `feth` interface pair that was not already in use"))
-    }
-    */
+    const MEMORY_MIN: usize = 2048;
+    const MEMORY_MAX: usize = 16777216;
+    const RTM_VERSION: u8 = 5;
 
     /// Creates a new TAP device.
     ///
@@ -473,7 +453,7 @@ impl FethTap {
 
         let mut enable = 1i32;
         let mut disable = 0i32;
-        let mut buffer_len = BPF_BUFFER_LEN;
+        let mut buffer_len = BPF_BUFFER_LEN; // TODO: make configurable?
 
         // Sets the length of the buffer that will be used for subsequent `read()`s
         if unsafe { libc::ioctl(bpf_fd, libc::BIOCSBLEN, ptr::addr_of_mut!(buffer_len)) } != 0 {
@@ -486,6 +466,7 @@ impl FethTap {
         }
 
         // Have reads return immediately when packets are received
+        // TODO: make configurable?
         if unsafe { libc::ioctl(bpf_fd, libc::BIOCIMMEDIATE, ptr::addr_of_mut!(enable)) } != 0 {
             let err = io::Error::last_os_error();
             Self::close_fd(bpf_fd);
@@ -525,7 +506,8 @@ impl FethTap {
             return Err(err);
         }
 
-        // Do sniff packets even if they're not addressed specifically to us
+        // Do receive packets even if they're not addressed specifically to the interface's
+        // associated address
         if unsafe { libc::ioctl(bpf_fd, libc::BIOCPROMISC as u64, ptr::addr_of_mut!(enable)) } != 0
         {
             let err = io::Error::last_os_error();
@@ -535,19 +517,6 @@ impl FethTap {
             Self::close_fd(ndrv_fd);
             return Err(err);
         }
-
-        // TODO: do any of these need to come before we bind/connect our NDRV and BPF sockets?
-        // If so, we'll bind/connect when the device is brought up
-
-        // ipconfig feth{if1} lladdr <mac-addr>
-        // ipconfig feth{if2} peer feth{if1}
-        // ipconfig feth{if2} mtu <mtu>
-        // ipconfig feth{if2} up
-        // ipconfig feth{if1} mtu <mtu>
-        // ipconfig feth{if1} metric <metric>
-        // ipconfig feth{if1} up
-
-        // configure IPv6 params
 
         Ok(Self {
             iface,
@@ -597,34 +566,17 @@ impl FethTap {
         }
     }
 
-    fn destroy_iface(sockfd: RawFd, iface: Interface) {
-        let mut req = libc::ifreq {
-            ifr_name: iface.name_raw_i8(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
-        };
-
-        unsafe {
-            debug_assert_eq!(
-                libc::ioctl(sockfd, SIOCIFDESTROY, ptr::addr_of_mut!(req)),
-                0
-            );
-        }
-    }
-
-    fn close_fd(fd: RawFd) {
-        unsafe {
-            debug_assert_eq!(libc::close(fd), 0);
-        }
-    }
-
+    /// Returns the primary `feth` interface name associated with the TAP device.
     pub fn name(&self) -> io::Result<Interface> {
         Ok(self.iface)
     }
 
+    /// Returns the peer `feth` interface name associated with the TAP device.
     pub fn peer_name(&self) -> io::Result<Interface> {
         Ok(self.peer_iface)
     }
 
+    /// Returns the Maximum Transmission Unit (MTU) of the TAP device.
     pub fn mtu(&self) -> io::Result<usize> {
         let mut req = libc::ifreq {
             ifr_name: self.iface.name_raw_i8(),
@@ -645,6 +597,8 @@ impl FethTap {
         }
     }
 
+    /// Returns the minimum permissible Maximum Transmission Unit (MTU) that the TAP device can be
+    /// set to.
     pub fn min_mtu(&self) -> io::Result<usize> {
         let mut req = libc::ifreq {
             ifr_name: self.iface.name_raw_i8(),
@@ -665,6 +619,8 @@ impl FethTap {
         }
     }
 
+    /// Returns the maximum permissible Maximum Transmission Unit (MTU) that the TAP device can be
+    /// set to.
     pub fn max_mtu(&self) -> io::Result<usize> {
         let mut req = libc::ifreq {
             ifr_name: self.iface.name_raw_i8(),
@@ -685,6 +641,7 @@ impl FethTap {
         }
     }
 
+    /// Sets the Maximum Transmission Unit (MTU) of the TAP device.
     pub fn set_mtu(&self, mtu: usize) -> io::Result<()> {
         let mtu: i32 = mtu.try_into().map_err(|_| {
             io::Error::new(
@@ -724,7 +681,7 @@ impl FethTap {
         }
     }
 
-    /// Sets the state of the TAP device (i.e. "up" or "down").
+    /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let mut req = libc::ifreq {
             ifr_name: self.iface.name_raw_i8(),
@@ -776,6 +733,7 @@ impl FethTap {
         Ok(())
     }
 
+    /// Indicates whether Address Resolution Protocol (ARP) is enabled on the Tap device.
     pub fn arp(&self) -> io::Result<bool> {
         let mut req = libc::ifreq {
             ifr_name: self.iface.name_raw_i8(),
@@ -793,6 +751,7 @@ impl FethTap {
         }
     }
 
+    /// Enables or disables Address Resolution Protocol (ARP) on the Tap device.
     pub fn set_arp(&self, do_arp: bool) -> io::Result<()> {
         let mut req = libc::ifreq {
             ifr_name: self.iface.name_raw_i8(),
@@ -836,6 +795,7 @@ impl FethTap {
         Ok(())
     }
 
+    /*
     pub fn debug(&self) -> io::Result<bool> {
         let mut req = libc::ifreq {
             ifr_name: self.iface.name_raw_i8(),
@@ -895,7 +855,9 @@ impl FethTap {
 
         Ok(())
     }
+    */
 
+    /*
     pub fn promiscuous(&self) -> io::Result<bool> {
         let mut req = libc::ifreq {
             ifr_name: self.iface.name_raw_i8(),
@@ -939,6 +901,7 @@ impl FethTap {
 
         Ok(())
     }
+    */
 
     // TODO: which of these impls is correct?
     /*
@@ -1108,6 +1071,7 @@ impl FethTap {
         }
     }
 
+    /*
     pub fn add_multicast(&self, multicast_addr: MacAddr) -> io::Result<()> {
         let addr = libc::sockaddr_dl {
             sdl_len: mem::size_of::<libc::sockaddr_dl>() as u8,
@@ -1605,15 +1569,13 @@ impl FethTap {
             }
         }
     }
-
-    const MEMORY_MIN: usize = 2048;
-    const MEMORY_MAX: usize = 16777216;
-    const RTM_VERSION: u8 = 5;
+    */
 
     /// Retrieves the IPv4/IPv6 addresses assigned to the interface.
     ///
-    /// This method makes no guarantee on the order of addresses returned IPv4 and IPv6 addresses
-    /// may be mixed randomly within the `Vec`.
+    /// This method makes no guarantee on the order of addresses returned. IPv4 and IPv6 addresses
+    /// may be mixed in any random order within the `Vec`, even between consecutive calls to this
+    /// method.
     pub fn addrs(&self) -> io::Result<Vec<IpAddr>> {
         // First, get the index of the interface
         let if_index = self.iface.index()?;
@@ -1740,6 +1702,7 @@ impl FethTap {
         Ok(addrs)
     }
 
+    /// Sends a single packet out over the TAP interface.
     #[inline]
     pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
         unsafe {
@@ -1750,6 +1713,7 @@ impl FethTap {
         }
     }
 
+    /// Receives a single packet from the TAP interface.
     #[inline]
     pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         unsafe {
@@ -1764,6 +1728,9 @@ impl FethTap {
         }
     }
 
+    /// Deletes the feth interface(s) from the operating system.
+    ///
+    /// This method will remove the TAP even if it is set to a persistent mode of operation.
     pub fn destroy(self) -> io::Result<()> {
         let mut err = None;
 
@@ -1796,6 +1763,26 @@ impl FethTap {
         match err {
             None => Ok(()),
             Some(e) => Err(e),
+        }
+    }
+
+    fn destroy_iface(sockfd: RawFd, iface: Interface) {
+        let mut req = libc::ifreq {
+            ifr_name: iface.name_raw_i8(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        unsafe {
+            debug_assert_eq!(
+                libc::ioctl(sockfd, SIOCIFDESTROY, ptr::addr_of_mut!(req)),
+                0
+            );
+        }
+    }
+
+    fn close_fd(fd: RawFd) {
+        unsafe {
+            debug_assert_eq!(libc::close(fd), 0);
         }
     }
 }

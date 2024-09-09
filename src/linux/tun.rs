@@ -189,7 +189,7 @@ impl Tun {
         }
     }
 
-    /// Sets the state of the TUN device (i.e. "up" or "down").
+    /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let mut req = libc::ifreq {
             ifr_name: [0i8; 16],

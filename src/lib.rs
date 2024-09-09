@@ -1,19 +1,22 @@
 //! Cross-platform TUN/TAP interfaces for Rust.
 //!
 //!
+//!
+
+// TODO: documentation here
 
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
-#[cfg(target_os = "netbsd")]
-pub mod netbsd;
-#[cfg(target_os = "openbsd")]
-pub mod openbsd;
-#[cfg(target_os = "solaris")]
-pub mod solaris;
-#[cfg(all(target_os = "windows", feature = "tapwin6"))]
-pub mod tapwin6;
+//#[cfg(target_os = "netbsd")]
+//pub mod netbsd;
+//#[cfg(target_os = "openbsd")]
+//pub mod openbsd;
+//#[cfg(target_os = "solaris")]
+//pub mod solaris;
+//#[cfg(all(target_os = "windows", feature = "tapwin6"))]
+//pub mod tapwin6;
 #[cfg(all(target_os = "windows", feature = "wintun"))]
 pub mod wintun;
 
@@ -58,7 +61,9 @@ use std::os::windows::ffi::{OsStrExt, OsStringExt};
 /// [`Tap`] both allow this state to be set via the [`set_state()`](Tun::set_state) method.
 #[derive(Clone, Copy, Debug)]
 pub enum DeviceState {
+    /// An activated device state.
     Up,
+    /// An inactivated device state.
     Down,
 }
 
@@ -94,6 +99,9 @@ impl Interface {
     pub const MAX_INTERFACE_NAME_LEN: usize = INTERNAL_MAX_INTERFACE_NAME_LEN;
 
     /// A special catch-all interface identifier that specifies all operational interfaces.
+    ///
+    /// Note that this interface is not valid for most contexts--its main purpose is enabling raw
+    /// sockets or similar sniffing devices to listen in on traffic from all interfaces at once.
     #[cfg(not(target_os = "windows"))]
     pub fn any() -> io::Result<Self> {
         let name = [0; Self::MAX_INTERFACE_NAME_LEN + 1];
@@ -105,20 +113,30 @@ impl Interface {
         })
     }
 
-    /// Constructs an `Interface` from the given `if_name`.
+    /// Constructs an `Interface` from the given interface name.
     ///
-    /// `if_name` must not consist of more than 15 bytes of UTF-8, and must not have any null
-    /// characters.
+    /// `if_name` must not consist of more than
+    /// [`MAX_INTERFACE_NAME_LEN`](Self::MAX_INTERFACE_NAME_LEN) bytes of UTF-8 (for *nix
+    /// platforms) or, and must not contain any null characters.
     ///
     /// # Errors
     ///
-    /// Returns [InvalidData](io::ErrorKind::InvalidData) if `if_name` is longer than 15 characters
-    /// or contains a null byte.
+    /// Returns [InvalidData](io::ErrorKind::InvalidData) if `if_name` is longer than the maximum
+    /// number of bytes or contains a null character.
     #[inline]
     pub fn new(if_name: &impl AsRef<OsStr>) -> io::Result<Self> {
         Self::new_inner(if_name)
     }
 
+    /// Constructs an `Interface` from the given C string.
+    ///
+    /// `if_name` must not consist of more than
+    /// [`MAX_INTERFACE_NAME_LEN`](Self::MAX_INTERFACE_NAME_LEN) bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [InvalidData](io::ErrorKind::InvalidData) if `if_name` is longer than the maximum
+    /// number of bytes.
     #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn from_cstr(if_name: &CStr) -> io::Result<Self> {
@@ -194,7 +212,7 @@ impl Interface {
         }
     }
 
-    /// Indicates whether the interface currently exists on the system.
+    /// Indicates whether the interface can currently be found on the system.
     #[inline]
     pub fn exists(&self) -> io::Result<bool> {
         match self.index() {
@@ -218,7 +236,7 @@ impl Interface {
         }
     }
 
-    /// Retrieves the associated index of the network interface.
+    /// Retrieves the associated interface index of the network interface.
     #[inline]
     pub fn index(&self) -> io::Result<u32> {
         self.index_impl()
@@ -247,9 +265,8 @@ impl Interface {
         }
     }
 
-    // If the above doesn't work, use
-    // ConvertInterfaceNameToLuidA (or else get the LUID directly) and
-    // ConvertInterfaceLuidToIndex
+    // TODO: If the above doesn't work, use ConvertInterfaceNameToLuidA (or else get the LUID
+    // directly) and `ConvertInterfaceLuidToIndex`
 
     /// Retrieves the name of the interface.
     pub fn name(&self) -> OsString {
@@ -268,6 +285,7 @@ impl Interface {
         OsString::from_wide(&self.name[..length])
     }
 
+    /// Returns the interface name as an array of `char` bytes (i.e. signed 8-bit integers).
     #[cfg(not(target_os = "windows"))]
     pub fn name_raw_i8(&self) -> [i8; Self::MAX_INTERFACE_NAME_LEN + 1] {
         array::from_fn(|i| self.name[i] as i8)

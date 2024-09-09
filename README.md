@@ -26,7 +26,7 @@ devices. It supports the following features for each platform:
 
 Note that this library is currently a work in progress--more platforms will be supported soon!
 
-# Feature Comparison to Other Libraries
+## Feature Comparison to Other Libraries
 
 | Feature                                     | `tappers` | `tun`          | `tun2`           | `tun-tap`  | `utuntap` | `tokio-tun` |
 | ------------------------------------------- | --------- | -------------- | ---------------- | ---------- | --------- | ----------- |
@@ -46,7 +46,7 @@ Note that this library is currently a work in progress--more platforms will be s
 | non-`async` support                         | ✅        | ✅             | ✅               | ✅         | ✅        | ⬜          |
 | `async` support                             | Planned   | ✅             | Unix only        | ✅         | ⬜        | ✅          |
 
-# Additional Notes on Platform Support
+## Additional Notes on Platform Support
 
 Not all platforms implement the standard `/dev/net/tun` interface for TUN/TAP creation; there are
 special instances where TUN and TAP devices are provided either through the use of custom drivers
@@ -55,7 +55,7 @@ outlined below. The TL;DR is that *nix platforms are supported natively, Windows
 provided extra open-source drivers are installed, and mobile platfroms are too restrictive for
 `tappers` to work well with.
 
-## Windows
+### Windows
 
 Windows provides no TUN/TAP interface support by default. Instead, there are two open-source
 drivers that provide roughly equivalent functionality: the Wireguard-supported `wintun` driver, and
@@ -63,7 +63,7 @@ the OpenVPN-supported `tap-windows6` driver. `wintun` provides only TUN support,
 `tap-windows6` provides TAP and "simulated" TUN support. In either case, the appropriate driver must
 be installed; otherwise, instantiation of `Tun` and `Tap` types will fail with an error.
 
-## MacOS
+### MacOS
 
 MacOS provides a kind of TUN interface via the `utun` API, which acts mostly the same as `tun` on
 other platforms. While MacOS has no explicit `tap` API, it does have a relatively-undocumented
@@ -76,7 +76,7 @@ remained relatively stable since its inception.
 In short, neither TUN nor TAP interfaces are formally supported on MacOS, but `tappers` provides
 equivalent functionality for its `Tun`/`Tap` types via `utun` and `feth`.
 
-## Android
+### Android
 
 Android techincally does offer the `/dev/net/tun` API, but it is only accessible to applications
 with root privileges. As most Android distributions do not allow applications to run with root
@@ -89,14 +89,14 @@ no native API equivalent in Android, so `tappers` does not currently wrap it.
 For the (relatively slimmer) use case where users would like to run code on rooted Android devices,
 `tappers` provides bindings to Android's TUN/TAP interfaces.
 
-## iOS
+### iOS
 
 iOS provides the `NEPacketTunnelProvider` API for VPN/proxy applications (similar to Android's
 `VpnProvider`). iOS does not support the creation of arbitrary TUN interfaces, and it provides no
 support for TAP interfaces. `NEPacketTunnelProvider` has no native API equivalent, so `tappers`
 does not currently wrap it.
 
-# `async` Runtime Support
+## `async` Runtime Support
 
 All `Tun` and `Tap` types implement synchronous blocking/nonblocking `send()` and `recv()` APIs.
 In addition to this, `tappers` will aim to provide first-class support for the following `async`
@@ -112,7 +112,7 @@ runtimes:
 
 Note that this library is currently a work in progress--`async` runtimes will soon be supported.
 
-# Dependency Policy
+## Dependency Policy
 
 Like other crates managed by pkts.org, `tappers` aims to rely on a minimal set of dependencies
 that are vetted and well-used in the Rust ecosystem. As such, `tappers` makes use of only the
@@ -126,3 +126,24 @@ library once certain OnceCell APIs are stabilized.
 We do not plan on adding in any additional dependencies to `tappers`. The one exception to this
 rule is that some common structs (e.g. `MacAddr`, `Interface`) may be split out into a separate
 crate in a future release.
+
+## License
+
+This project is licensed under either of
+
+* [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+  ([LICENSE-APACHE](https://github.com/rust-lang/libc/blob/HEAD/LICENSE-APACHE))
+
+* [MIT License](https://opensource.org/licenses/MIT)
+  ([LICENSE-MIT](https://github.com/rust-lang/libc/blob/HEAD/LICENSE-MIT))
+
+at your option.
+
+## Contributing
+
+`tappers` is open to contribution--feel free to submit an Issue or Pull Request if there's
+something you'd like to add to this library.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
+`tappers` by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without
+any additional terms or conditions.

@@ -80,16 +80,19 @@ impl TunAdapter {
         Ok(())
     }
 
+    /// Returns the interface name of the TUN adapter.
     #[inline]
     pub fn name(&self) -> Interface {
         self.if_name
     }
 
+    /// Returns the Locally-Unique ID (LUID) associated with the TUN adapter.
     pub fn luid(&mut self) -> NET_LUID_LH {
         self.wintun
             .get_adapter_luid(unsafe { self.adapter.as_mut() })
     }
 
+    /// Returns the device state of the adapter.
     #[inline]
     pub fn state(&self) -> io::Result<DeviceState> {
         let mut row = MIB_IFROW {
@@ -132,6 +135,7 @@ impl TunAdapter {
         }
     }
 
+    /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     #[inline]
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let admin_status = match state {
@@ -172,6 +176,7 @@ impl TunAdapter {
         }
     }
 
+    /// Retrieves the Maximum Transmission Unit (MTU) of the adapter.
     #[inline]
     pub fn mtu(&self) -> io::Result<usize> {
         let mut row = MIB_IFROW {
@@ -208,6 +213,10 @@ impl TunAdapter {
     }
 
     /// Starts a single session on the given adapter.
+    ///
+    /// `ring_size` indicates the size of the buffer allocated for transmitting and receiving
+    /// packets in the session. Its value must be a power of 2 between 0x20000 (128 kiB) and
+    /// 0x4000000 (64 MiB), inclusive.
     pub fn start_session(&mut self, ring_size: u32) -> Result<TunSession<'_>, io::Error> {
         let session = self
             .wintun
@@ -215,8 +224,14 @@ impl TunAdapter {
         Ok(TunSession::new(self, session))
     }
 
+    // TODO: is start_sessions() allowed?
+
     /// Starts a specified number of sessions on the given adapter.
-    pub fn start_sessions(
+    ///
+    /// `ring_size` indicates the size of the buffer allocated for transmitting and receiving
+    /// packets in each session. Its value must be a power of 2 between 0x20000 (128 kiB) and
+    /// 0x4000000 (64 MiB), inclusive.
+    fn start_sessions(
         &mut self,
         ring_size: u32,
         num_sessions: usize,

@@ -22,12 +22,18 @@ pub struct TunSession<'a> {
 }
 
 impl<'a> TunSession<'a> {
-    /// The default ring buffer size used for a `TunSession` (2 MiB).
     pub const DEFAULT_RING_SIZE: u32 = 0x200000; // 128 kiB
+
+    /*
+    /// The default ring buffer size used for a `TunSession` (2 MiB).
+
     /// The minimum permitted ring buffer size that can be used for a `TunSession`.
     pub const MIN_RING_SIZE: u32 = 0x20000; // 2 MiB
     /// The maximum permitted ring buffer size that can be used for a `TunSession`.
-    pub const WINTUN_MAX_RING_CAPACITY: u32 = 0x4000000; // 64 MiB
+    pub const MAX_RING_CAPACITY: u32 = 0x4000000; // 64 MiB
+    */
+
+    const SEND_MAX_BLOCKING_INTERVAL: u64 = 100;
 
     /// Creates a new `TunSession`.
     pub(crate) fn new(adapter: &'a TunAdapter, session: NonNull<WintunSession>) -> Self {
@@ -49,8 +55,6 @@ impl<'a> TunSession<'a> {
             .wintun
             .read_event_handle(unsafe { session.as_mut() })
     }
-
-    const SEND_MAX_BLOCKING_INTERVAL: u64 = 100;
 
     /// Sends a packet out on the TUN interface.
     ///
@@ -102,8 +106,8 @@ impl<'a> TunSession<'a> {
     /// If the received packet would exceed the length of `buf`, the packet will be truncated to
     /// fit the receive buffer. As of current Wintun versions, a packet is guaranteed to be less
     /// than 65536 (2^16) bytes in length. As this could potentially change in future Wintun
-    /// releases, received packets that are equal to the length of `buf` should be treated as if
-    /// they have been truncated.
+    /// releases, received packets that are equal to the length of `buf` should always be treated
+    /// as if they have been truncated.
     #[inline]
     pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         Self::recv_impl(&self.adapter, &mut self.session, self.nonblocking, buf)

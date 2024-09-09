@@ -190,7 +190,7 @@ impl Tap {
         }
     }
 
-    /// Sets the state of the TAP device (i.e. "up" or "down").
+    /// Sets the adapter state of the TAP device (e.g. "up" or "down").
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let mut req = libc::ifreq {
             ifr_name: [0i8; 16],

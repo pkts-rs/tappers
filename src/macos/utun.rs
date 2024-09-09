@@ -171,7 +171,7 @@ impl Utun {
         }
     }
 
-    /// Retrieves the current state of the TAP device (i.e. "up" or "down").
+    /// Retrieves the current state of the TUN device (i.e. "up" or "down").
     pub fn state(&self) -> io::Result<DeviceState> {
         let if_name = self.name()?;
 
@@ -191,7 +191,7 @@ impl Utun {
         }
     }
 
-    /// Sets the state of the TAP device (i.e. "up" or "down").
+    /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let if_name = self.name()?;
 
@@ -361,7 +361,7 @@ impl Utun {
     */
 
     #[inline]
-    pub fn destroy_impl(&self) -> io::Result<()> {
+    fn destroy_impl(&self) -> io::Result<()> {
         self.set_state(DeviceState::Down)?;
 
         let if_name = self.name()?;
@@ -412,49 +412,5 @@ impl Drop for Utun {
 impl AsRawFd for Utun {
     fn as_raw_fd(&self) -> RawFd {
         self.fd
-    }
-}
-
-impl io::Read for Utun {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        unsafe {
-            match libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) {
-                r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
-    }
-
-    fn read_vectored(&mut self, bufs: &mut [io::IoSliceMut<'_>]) -> io::Result<usize> {
-        unsafe {
-            match libc::readv(self.fd, bufs.as_mut_ptr().cast(), bufs.len() as i32) {
-                r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
-    }
-}
-
-impl io::Write for Utun {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        unsafe {
-            match libc::write(self.fd, buf.as_ptr() as *mut libc::c_void, buf.len()) {
-                r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
-        unsafe {
-            match libc::writev(self.fd, bufs.as_ptr().cast(), bufs.len() as i32) {
-                r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
     }
 }

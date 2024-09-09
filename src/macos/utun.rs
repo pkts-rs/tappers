@@ -6,6 +6,7 @@ use crate::{DeviceState, Interface};
 const UTUN_PREFIX: &[u8] = b"utun";
 const UTUN_CONTROL_NAME: &[u8] = b"com.apple.net.utun_control\0";
 
+const SIOCDIFPHYADDR: libc::c_ulong = 0x80206941;
 const SIOCGIFDEVMTU: libc::c_ulong = 0xc0206944;
 const SIOCIFDESTROY: libc::c_ulong = 0x80206979;
 const SIOCGIFFLAGS: libc::c_ulong = 0xc0206911;
@@ -23,6 +24,14 @@ const SIOCSIFNETMASK: libc::c_ulong = 0x80206916;
 pub struct iovec_const {
     pub iov_base: *const libc::c_void,
     pub iov_len: libc::size_t,
+}
+
+// MacOS `route` utility uses this buffer size
+#[repr(C)]
+#[allow(non_camel_case_types)]
+struct rtmsg {
+    m_rtm: libc::rt_msghdr,
+    m_space: [u8; 512],
 }
 
 pub struct Utun {
@@ -305,42 +314,86 @@ impl Utun {
         self.destroy_impl()
     }
 
-    #[inline]
-    pub fn destroy_impl(&self) -> io::Result<()> {
-        self.set_state(DeviceState::Down)
-
-        //let if_name = self.name()?;
-
-        /*
-        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-        if fd < 0 {
-            Self::close_fd(self.fd);
-            return Err(io::Error::last_os_error());
+    /*
+    fn delete_all_routes(&self) -> io::Result<()> {
+        let route_fd = unsafe { libc::socket(libc::PF_ROUTE, libc::SOCK_RAW, 0) };
+        if route_fd < 0 {
+            return Err(io::Error::last_os_error())
         }
 
-        let ifr_name = if_name.name_raw_i8();
+        let msg = rtmsg {
+            m_rtm: libc::rt_msghdr {
+                rtm_msglen: 0,
+                rtm_version: libc::RTM_VERSION,
+                rtm_type: libc::RTM_DELETE,
+                rtm_index: self.name()?.index()? as u16,
+                rtm_flags: 0i32, // `RTF_STATIC` | `RTF_UP` | (`RTF_HOST` || `RTF_GATEWAY`??)
+                rtm_addrs: 0i32, // `RTA_NETMASK`??
+                rtm_pid: 0,
+                rtm_seq: 0,
+                rtm_errno: 0,
+                rtm_use: 0,
+                rtm_inits: 0, // TODO: populate with `RTV_*` flags
+                rtm_rmx: libc::rt_metrics {
+                    rmx_locks: 0u32,
+                    rmx_mtu: 0u32,
+                    rmx_hopcount: 0u32,
+                    rmx_expire: 0i32,
+                    rmx_recvpipe: 0u32,
+                    rmx_sendpipe: 0u32,
+                    rmx_ssthresh: 0u32,
+                    rmx_rtt: 0u32,
+                    rmx_rttvar: 0u32,
+                    rmx_pksent: 0u32,
+                    rmx_filler: [0u32; 4],
+                },
+            },
+            m_space: [0u8; 512],
+        };
+
+        // TODO: write() `rtmsg` as an array of bytes, check return less than 0
+
+        // return success!
+
+        // Alternatively: delete addresses using SIOCDIFADDR?
+        // Specifically
+    }
+    */
+
+    #[inline]
+    pub fn destroy_impl(&self) -> io::Result<()> {
+        self.set_state(DeviceState::Down)?;
+
+        let if_name = self.name()?;
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_i8(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        Self::close_fd(self.fd);
-
-        let res = match unsafe { libc::ioctl(fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)) } {
+        // NOTE: MacOS has strange behavior for `utun` interfaces.
+        //
+        // They don't conform to the usual `SIOCIFDESTROY` ioctl used generally to remove
+        // interfaces. Instead, a given `utun` interface will only disappear once all routes that
+        // make use of it have been deleted. This has caused issues elsewhere:
+        //
+        // https://forums.developer.apple.com/forums/thread/682767
+        // https://serverfault.com/questions/1129536/how-to-delete-utun0-in-my-macos
+        //
+        // So it seems that manually deleting routes causes a `utun` device to go away. But, there
+        // is an alternative: `SIOCDIFPHYADDR`. I'm not 100% sure what it does under the hood, but
+        // the source code for MacOS's `ifconfig` util uses it for `ifconfig deletetunnel`. This may
+        // or may not cover the edge cases shown in the above links.
+        //
+        // If further bugs arise, keep chasing this thread; for now, it works for the general case.
+        let res = match unsafe { libc::ioctl(self.fd, SIOCDIFPHYADDR, ptr::addr_of_mut!(req)) } {
             0 => Ok(()),
             _ => Err(io::Error::last_os_error()),
         };
 
+        Self::close_fd(self.fd);
 
-        Self::close_fd(fd);
-
-        res
-        */
-
-        // SIOCIFDESTROY doesn't work for utun interfaces.
-
-        // TODO: anything else we need to do? OpenVPN doesn't do anything...
+        Ok(())
     }
 
     fn close_fd(fd: RawFd) {

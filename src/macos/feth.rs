@@ -1686,8 +1686,7 @@ impl FethTap {
                         .try_into()
                         .unwrap();
                     unsafe {
-                        let in6_addr: libc::sockaddr_in6 =
-                            unsafe { mem::transmute(in6_addr_bytes) };
+                        let in6_addr: libc::sockaddr_in6 = mem::transmute(in6_addr_bytes);
                         addrs.push(IpAddr::V6(Ipv6Addr::from(in6_addr.sin6_addr.s6_addr)));
                     }
                 }

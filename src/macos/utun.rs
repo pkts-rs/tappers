@@ -1,6 +1,5 @@
-use core::str;
 use std::os::fd::{AsRawFd, RawFd};
-use std::{array, io, mem, ptr};
+use std::{array, io, mem, ptr, str};
 
 use crate::{DeviceState, Interface};
 
@@ -303,35 +302,45 @@ impl Utun {
     }
 
     pub fn destroy(self) -> io::Result<()> {
-        let if_name = self.name()?;
+        self.destroy_impl()
+    }
+
+    #[inline]
+    pub fn destroy_impl(&self) -> io::Result<()> {
+        self.set_state(DeviceState::Down)
+
+        //let if_name = self.name()?;
+
+        /*
+        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        if fd < 0 {
+            Self::close_fd(self.fd);
+            return Err(io::Error::last_os_error());
+        }
+
+        let ifr_name = if_name.name_raw_i8();
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_i8(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
-        };
-
-        let res = match unsafe { libc::ioctl(self.fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)) } {
-            0 => Ok(()),
-            _ => Err(io::Error::last_os_error()),
         };
 
         Self::close_fd(self.fd);
 
-        res
-    }
-
-    fn destroy_iface(sockfd: RawFd, if_name: Interface) {
-        let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_i8(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        let res = match unsafe { libc::ioctl(fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)) } {
+            0 => Ok(()),
+            _ => Err(io::Error::last_os_error()),
         };
 
-        unsafe {
-            debug_assert_eq!(
-                libc::ioctl(sockfd, SIOCIFDESTROY, ptr::addr_of_mut!(req)),
-                0
-            );
-        }
+
+        Self::close_fd(fd);
+
+        res
+        */
+
+        // SIOCIFDESTROY doesn't work for utun interfaces.
+
+        // TODO: anything else we need to do? OpenVPN doesn't do anything...
     }
 
     fn close_fd(fd: RawFd) {
@@ -343,10 +352,7 @@ impl Utun {
 
 impl Drop for Utun {
     fn drop(&mut self) {
-        if let Ok(if_name) = self.name() {
-            Self::destroy_iface(self.fd, if_name);
-        }
-        Self::close_fd(self.fd);
+        self.destroy_impl().unwrap();
     }
 }
 

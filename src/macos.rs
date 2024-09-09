@@ -97,16 +97,6 @@ impl TapImpl {
     }
 
     #[inline]
-    pub fn set_up(&mut self) -> io::Result<()> {
-        self.tap.set_state(DeviceState::Up)
-    }
-
-    #[inline]
-    pub fn set_down(&mut self) -> io::Result<()> {
-        self.tap.set_state(DeviceState::Down)
-    }
-
-    #[inline]
     pub fn mtu(&self) -> io::Result<usize> {
         self.tap.mtu()
     }

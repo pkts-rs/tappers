@@ -89,3 +89,31 @@ impl Tap {
         self.inner.recv(buf)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unique_names() {
+        let tap1 = Tap::new().unwrap();
+        let tap2 = Tap::new().unwrap();
+        let tap3 = Tap::new().unwrap();
+
+        let tap1_name = tap1.name().unwrap();
+        let tap2_name = tap2.name().unwrap();
+        let tap3_name = tap3.name().unwrap();
+
+        assert!(tap1_name != tap2_name);
+        assert!(tap1_name != tap3_name);
+        assert!(tap2_name != tap3_name);
+    }
+
+    #[test]
+    fn up_down() {
+        let mut tap1 = Tap::new().unwrap();
+
+        tap1.set_up().unwrap();
+        tap1.set_down().unwrap();
+    }
+}

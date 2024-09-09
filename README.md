@@ -35,9 +35,9 @@ Note that this library is currently a work in progress--more platforms will be s
 | Supports multiple TUN/TAP creation          | ✅        | Not on Windows | ✅               | ✅         | ✅        | ✅          |
 | IPv4 routing support                        | Planned   | ✅             | ✅               | ⬜         | ⬜        | ✅          |
 | IPv6 routing support                        | Planned   | ⬜             | Linux only       | ⬜         | ⬜        | ⬜          |
-| Unit testing for `TUN` devices              | Planned   | ✅             | ✅               | ✅         | ✅        | ⬜          |
-| Unit testing for `TAP` devices              | Planned   | ⬜             | ⬜               | ⬜         | ⬜        | ⬜          |
-| Cross-platform CI tests                     | Planned   | ⬜             | ⬜               | N/A        | ⬜        | N/A         |
+| Unit testing for `TUN` devices              | ✅        | ✅             | ✅               | ✅         | ✅        | ⬜          |
+| Unit testing for `TAP` devices              | ✅        | ⬜             | ⬜               | ⬜         | ⬜        | ⬜          |
+| Cross-platform CI tests                     | ✅        | ⬜             | ⬜               | N/A        | ⬜        | N/A         |
 | TUN/TAP support for Linux                   | ✅        | TUN only       | TUN only         | ✅         | ✅        | ✅          |
 | TUN/TAP support for MacOS                   | ✅        | TUN only       | TUN only         | ⬜         | TUN only  | ⬜          |
 | TUN/TAP support for Windows                 | TUN only  | TUN only       | TUN only         | ⬜         | ⬜        | ⬜          |

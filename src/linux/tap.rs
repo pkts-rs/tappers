@@ -26,7 +26,29 @@ impl Tap {
     /// The interface name associated with this TAP device is chosen by the system, and can be
     /// retrieved via the [`name()`](Self::name) method.
     pub fn new() -> io::Result<Self> {
-        Self::new_named(Interface::new_raw(&[b'\0'])?)
+        let flags = libc::IFF_TAP | libc::IFF_NO_PI | libc::IFF_TUN_EXCL;
+
+        let mut req = libc::ifreq {
+            ifr_name: [0i8; 16],
+            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+                ifru_flags: flags as i16,
+            },
+        };
+
+        // TODO: unify `ErrorKind`s returned
+        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
+            unsafe {
+                libc::close(fd);
+            }
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(Self { fd })
     }
 
     /// Opens or creates a TTAP device of the given name.

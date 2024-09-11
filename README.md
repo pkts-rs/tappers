@@ -68,7 +68,7 @@ be installed; otherwise, instantiation of `Tun` and `Tap` types will fail with a
 MacOS provides a kind of TUN interface via the `utun` API, which acts mostly the same as `tun` on
 other platforms. While MacOS has no explicit `tap` API, it does have a relatively-undocumented
 `feth` interface (see
-(if_fake.c)[https://github.com/apple-oss-distributions/xnu/blob/main/bsd/net/if_fake.c]) that is
+[if_fake.c](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/net/if_fake.c)) that is
 nearly equivalent in functionality to TAP interfaces. Despite its missing documentation, `feth`
 interfaces are supported in MacOS releases as early as 10.13 (High Sierra), and their API has
 remained relatively stable since its inception.

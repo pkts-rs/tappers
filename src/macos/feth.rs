@@ -982,9 +982,9 @@ impl FethTap {
     }
     */
 
-    /// Indicates whether nonblocking is enabled for `read` and `write` operations on the TAP device.
+    /// Indicates whether nonblocking is enabled for `read` and `write` operations on the TUN device.
     pub fn nonblocking(&self) -> io::Result<bool> {
-        let flags = unsafe { libc::fcntl(self.ndrv_fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(self.bpf_fd, libc::F_GETFL) };
         if flags < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -994,21 +994,24 @@ impl FethTap {
 
     /// Sets nonblocking mode for `read` and `write` operations on the TUN device.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        let nonblocking = match nonblocking {
-            true => 1,
-            false => 0,
-        };
-
-        if unsafe { libc::ioctl(self.ndrv_fd, libc::FIONBIO, nonblocking) } != 0 {
+        let flags = unsafe { libc::fcntl(self.bpf_fd, libc::F_GETFL) };
+        if flags < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        unsafe {
-            match libc::ioctl(self.bpf_fd, libc::FIONBIO, nonblocking) {
-                0.. => Ok(()),
-                _ => Err(io::Error::last_os_error()),
-            }
+        let flags = match nonblocking {
+            true => flags | libc::O_NONBLOCK,
+            false => flags & !libc::O_NONBLOCK,
+        };
+
+        if unsafe { libc::fcntl(self.bpf_fd, libc::F_SETFL, flags) } < 0 {
+            return Err(io::Error::last_os_error());
+        } else {
+            Ok(())
         }
+
+        // TODO: NDRV socket didn't allow setting nonblocking... is that okay?
+        // I'm assuming it's guaranteed not to block since it runs system commands.
     }
 
     // Need to define SIOCGIFLLADDR first

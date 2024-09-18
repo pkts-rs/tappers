@@ -381,6 +381,8 @@ impl Utun {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
+        Self::close_fd(self.fd);
+
         // NOTE: MacOS has strange behavior for `utun` interfaces.
         //
         // They don't conform to the usual `SIOCIFDESTROY` ioctl used generally to remove
@@ -390,19 +392,10 @@ impl Utun {
         // https://forums.developer.apple.com/forums/thread/682767
         // https://serverfault.com/questions/1129536/how-to-delete-utun0-in-my-macos
         //
-        // So it seems that manually deleting routes causes a `utun` device to go away. But, there
-        // is an alternative: `SIOCDIFPHYADDR`. I'm not 100% sure what it does under the hood, but
-        // the source code for MacOS's `ifconfig` util uses it for `ifconfig deletetunnel`. This may
-        // or may not cover the edge cases shown in the above links.
-        //
-        // If further bugs arise, keep chasing this thread; for now, it works for the general case.
-        let res = match unsafe { libc::ioctl(self.fd, SIOCDIFPHYADDR, ptr::addr_of_mut!(req)) } {
-            0 => Ok(()),
-            _ => Err(io::Error::last_os_error()),
-        };
-
-        Self::close_fd(self.fd);
-
+        // So it seems that manually deleting routes causes a `utun` device to go away. The MacOS
+        // implementation of `ifconfig` uses `SIOCDIFPHYADDR`, but that hasn't worked well...
+        // If further bugs arise, keep chasing this thread; for now, just doing nothing works for
+        // the general case.
         Ok(())
     }
 

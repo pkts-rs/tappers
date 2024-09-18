@@ -134,7 +134,7 @@ impl Interface {
     /// Returns [InvalidData](io::ErrorKind::InvalidData) if `if_name` is longer than the maximum
     /// number of bytes or contains a null character.
     #[inline]
-    pub fn new(if_name: &impl AsRef<OsStr>) -> io::Result<Self> {
+    pub fn new(if_name: impl AsRef<OsStr>) -> io::Result<Self> {
         Self::new_inner(if_name)
     }
 
@@ -155,7 +155,7 @@ impl Interface {
 
     #[cfg(target_os = "windows")]
     #[inline]
-    fn new_inner(if_name: &impl AsRef<OsStr>) -> io::Result<Self> {
+    fn new_inner(if_name: impl AsRef<OsStr>) -> io::Result<Self> {
         let mut utf16 = if_name.as_ref().encode_wide();
         let name = array::from_fn(|_| utf16.next().unwrap_or(0));
 
@@ -169,7 +169,7 @@ impl Interface {
 
     #[cfg(not(target_os = "windows"))]
     #[inline]
-    fn new_inner(if_name: &impl AsRef<OsStr>) -> io::Result<Self> {
+    fn new_inner(if_name: impl AsRef<OsStr>) -> io::Result<Self> {
         Self::new_raw(if_name.as_ref().as_bytes())
     }
 
@@ -280,17 +280,17 @@ impl Interface {
 
     /// Retrieves the name of the interface.
     pub fn name(&self) -> OsString {
-        self.name_inner()
+        self.name_impl()
     }
 
     #[cfg(not(target_os = "windows"))]
-    fn name_inner(&self) -> OsString {
+    fn name_impl(&self) -> OsString {
         let length = self.name.iter().position(|c| *c == 0).unwrap();
         OsStr::from_bytes(&self.name[..length]).to_owned()
     }
 
     #[cfg(target_os = "windows")]
-    fn name_inner(&self) -> OsString {
+    fn name_impl(&self) -> OsString {
         let length = self.name.iter().position(|c| *c == 0).unwrap();
         OsString::from_wide(&self.name[..length])
     }

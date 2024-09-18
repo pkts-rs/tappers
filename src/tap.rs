@@ -111,10 +111,8 @@ impl Tap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     #[test]
-    #[serial]
     fn unique_names() {
         let tap1 = Tap::new().unwrap();
         let tap2 = Tap::new().unwrap();
@@ -130,7 +128,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn up_down() {
         let mut tap1 = Tap::new().unwrap();
 
@@ -139,7 +136,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn exists() {
         let tap1 = Tap::new().unwrap();
         let tap1_name = tap1.name().unwrap();
@@ -147,7 +143,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn not_persistent() {
         let tap1 = Tap::new().unwrap();
 

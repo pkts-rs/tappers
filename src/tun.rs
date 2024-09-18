@@ -114,10 +114,8 @@ impl Tun {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     #[test]
-    #[serial]
     fn unique_names() {
         let tun1 = Tun::new().unwrap();
         let tun2 = Tun::new().unwrap();
@@ -133,7 +131,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn up_down() {
         let mut tun1 = Tun::new().unwrap();
 
@@ -142,7 +139,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn exists() {
         let tun1 = Tun::new().unwrap();
         let tun1_name = tun1.name().unwrap();
@@ -150,7 +146,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn not_persistent() {
         let tun1 = Tun::new().unwrap();
 

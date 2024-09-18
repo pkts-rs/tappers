@@ -127,6 +127,34 @@ mod tests {
         assert!(tap2_name != tap3_name);
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn given_name() {
+        use std::ffi::CStr;
+
+        let chosen_name = unsafe { CStr::from_ptr(b"feth24\0".as_ptr() as *const i8) };
+
+        let iface = Interface::from_cstr(chosen_name).unwrap();
+        let tun = Tap::new_named(iface).unwrap();
+        let tun_iface = tun.name().unwrap();
+
+        assert_eq!(chosen_name, tun_iface.name_cstr());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn given_name() {
+        use std::ffi::CStr;
+
+        let chosen_name = unsafe { CStr::from_ptr(b"tap24\0".as_ptr() as *const i8) };
+
+        let iface = Interface::from_cstr(chosen_name).unwrap();
+        let tun = Tap::new_named(iface).unwrap();
+        let tun_iface = tun.name().unwrap();
+
+        assert_eq!(chosen_name, tun_iface.name_cstr());
+    }
+
     #[test]
     fn up_down() {
         let mut tap1 = Tap::new().unwrap();
@@ -149,5 +177,16 @@ mod tests {
         let tap1_name = tap1.name().unwrap();
         drop(tap1);
         assert!(!tap1_name.exists().unwrap());
+    }
+
+    #[test]
+    fn nonblocking_switch() {
+        let mut tap = Tap::new().unwrap();
+
+        assert_eq!(tap.nonblocking().unwrap(), false);
+        tap.set_nonblocking(true).unwrap();
+        assert_eq!(tap.nonblocking().unwrap(), true);
+        tap.set_nonblocking(false).unwrap();
+        assert_eq!(tap.nonblocking().unwrap(), false);
     }
 }

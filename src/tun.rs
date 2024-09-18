@@ -130,6 +130,34 @@ mod tests {
         assert!(tun2_name != tun3_name);
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn given_name() {
+        use std::ffi::CStr;
+
+        let chosen_name = unsafe { CStr::from_ptr(b"utun24\0".as_ptr() as *const i8) };
+
+        let iface = Interface::from_cstr(chosen_name).unwrap();
+        let tun = Tun::new_named(iface).unwrap();
+        let tun_iface = tun.name().unwrap();
+
+        assert_eq!(chosen_name, tun_iface.name_cstr());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn given_name() {
+        use std::ffi::OsStr;
+
+        let chosen_name = OsStr::new("tun24");
+
+        let iface = Interface::new(chosen_name).unwrap();
+        let tun = Tun::new_named(iface).unwrap();
+        let tun_iface = tun.name().unwrap();
+
+        assert_eq!(chosen_name, tun_iface.name());
+    }
+
     #[test]
     fn up_down() {
         let mut tun1 = Tun::new().unwrap();
@@ -152,5 +180,16 @@ mod tests {
         let tun1_name = tun1.name().unwrap();
         drop(tun1);
         assert!(!tun1_name.exists().unwrap());
+    }
+
+    #[test]
+    fn nonblocking_switch() {
+        let mut tun1 = Tun::new().unwrap();
+
+        assert_eq!(tun1.nonblocking().unwrap(), false);
+        tun1.set_nonblocking(true).unwrap();
+        assert_eq!(tun1.nonblocking().unwrap(), true);
+        tun1.set_nonblocking(false).unwrap();
+        assert_eq!(tun1.nonblocking().unwrap(), false);
     }
 }

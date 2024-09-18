@@ -117,8 +117,8 @@ impl Tap {
     /// Sets the persistence of the TAP interface.
     ///
     /// If set to `false`, the TAP device will be destroyed once all file descriptor handles to it
-    /// have been closed. If set to `true`, the TAP device will persist until it is explicitly
-    /// closed or the system reboots. By default, persistence is set to `false`.
+    /// have been closed (e.g. on `Drop`). If set to `true`, the TAP device will persist until it
+    /// is explicitly closed or the system reboots. By default, persistence is set to `false`.
     pub fn set_persistent(&self, persistent: bool) -> io::Result<()> {
         let persist = match persistent {
             true => 1,

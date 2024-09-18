@@ -177,55 +177,38 @@ impl Wintun {
             .map(|f| f as *const libc::c_void)
     }
 
-    fn resolve_api(lib: *mut libc::c_void) -> io::Result<WintunApi> {
-        unsafe {
-            Ok(WintunApi {
-                WintunCreateAdapter: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunCreateAdapter\0",
-                )?),
-                WintunOpenAdapter: mem::transmute(Self::resolve_func(lib, b"WintunOpenAdapter\0")?),
-                WintunCloseAdapter: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunCloseAdapter\0",
-                )?),
-                WintunDeleteDriver: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunDeleteAdapter\0",
-                )?),
-                WintunGetAdapterLUID: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunGetAdapterLUID\0",
-                )?),
-                WintunGetRunningDriverVersion: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunGetRunningDriverVersion\0",
-                )?),
-                WintunSetLogger: mem::transmute(Self::resolve_func(lib, b"WintunSetLogger\0")?),
-                WintunStartSession: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunStartSession\0",
-                )?),
-                WintunEndSession: mem::transmute(Self::resolve_func(lib, b"WintunEndSession\0")?),
-                WintunGetReadWaitEvent: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunGetReadWaitEvent\0",
-                )?),
-                WintunReceivePacket: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunReceivePacket\0",
-                )?),
-                WintunReleaseReceivePacket: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunReleaseReceivePacket\0",
-                )?),
-                WintunAllocateSendPacket: mem::transmute(Self::resolve_func(
-                    lib,
-                    b"WintunAllocateSendPacket\0",
-                )?),
-                WintunSendPacket: mem::transmute(Self::resolve_func(lib, b"WintunSendPacket\0")?),
-            })
-        }
+    unsafe fn resolve_api(lib: *mut libc::c_void) -> io::Result<WintunApi> {
+        Ok(WintunApi {
+            WintunCreateAdapter: mem::transmute(Self::resolve_func(lib, b"WintunCreateAdapter\0")?),
+            WintunOpenAdapter: mem::transmute(Self::resolve_func(lib, b"WintunOpenAdapter\0")?),
+            WintunCloseAdapter: mem::transmute(Self::resolve_func(lib, b"WintunCloseAdapter\0")?),
+            WintunDeleteDriver: mem::transmute(Self::resolve_func(lib, b"WintunDeleteAdapter\0")?),
+            WintunGetAdapterLUID: mem::transmute(Self::resolve_func(
+                lib,
+                b"WintunGetAdapterLUID\0",
+            )?),
+            WintunGetRunningDriverVersion: mem::transmute(Self::resolve_func(
+                lib,
+                b"WintunGetRunningDriverVersion\0",
+            )?),
+            WintunSetLogger: mem::transmute(Self::resolve_func(lib, b"WintunSetLogger\0")?),
+            WintunStartSession: mem::transmute(Self::resolve_func(lib, b"WintunStartSession\0")?),
+            WintunEndSession: mem::transmute(Self::resolve_func(lib, b"WintunEndSession\0")?),
+            WintunGetReadWaitEvent: mem::transmute(Self::resolve_func(
+                lib,
+                b"WintunGetReadWaitEvent\0",
+            )?),
+            WintunReceivePacket: mem::transmute(Self::resolve_func(lib, b"WintunReceivePacket\0")?),
+            WintunReleaseReceivePacket: mem::transmute(Self::resolve_func(
+                lib,
+                b"WintunReleaseReceivePacket\0",
+            )?),
+            WintunAllocateSendPacket: mem::transmute(Self::resolve_func(
+                lib,
+                b"WintunAllocateSendPacket\0",
+            )?),
+            WintunSendPacket: mem::transmute(Self::resolve_func(lib, b"WintunSendPacket\0")?),
+        })
     }
 
     /// Opens a new Wintun DLL.
@@ -238,10 +221,7 @@ impl Wintun {
         unsafe {
             let lib = LoadLibraryA(WINTUN_LIB);
             if lib.is_null() {
-                return Err(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    io::Error::last_os_error(),
-                ));
+                return Err(io::Error::last_os_error());
             }
 
             let api =

@@ -78,6 +78,34 @@ jobs:
         run: TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/run.sh
         shell: bash
 
+  build_channels_dragonflybsd:
+    name: Build Channels DragonFlyBSD
+    runs-on: ubuntu-latest
+    env:
+      OS: dragonfly
+    strategy:
+      fail-fast: true
+      matrix:
+        toolchain:
+          - stable # Note: not actually stable, just current rustc version for DragonFlyBSD 6.4
+    steps:
+    - uses: actions/checkout@v4
+    - name: Test in DragonFlyBSD
+      id: dragonflybsd-ci
+      uses: vmactions/dragonflybsd-vm@v1
+      with:
+        release: "6.4.0"
+        envs: 'OS'
+        usesh: true
+        # DragonFly BSD does not have TAP interfaces by default; use kldload if_tap
+        prepare: |
+          pkg install -y sudo
+          pkg install -y rust
+          pkg upgrade -y
+          kldload if_tap
+        run: |
+          TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/run.sh
+
   build_channels_openbsd:
     name: Build Channels OpenBSD
     runs-on: ubuntu-latest

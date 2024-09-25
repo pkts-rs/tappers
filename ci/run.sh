@@ -16,6 +16,9 @@ case "${OS}" in
     openbsd*)
         # OpenBSD does not have rustup support
         ;;
+    dragonfly*)
+        # DragonFlyBSD does not have rustup support
+        ;;
     *)
         # FIXME: rustup often fails to download some artifacts due to network
         # issues, so we retry this N times.

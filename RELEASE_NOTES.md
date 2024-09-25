@@ -1,7 +1,9 @@
 # Release History:
 
-* 0.2.0
+* 0.2.0 (2024-09-25)
   - Add TUN/TAP support for *BSD variants
+  - Add CI for DragonFly BSD, FreeBSD, NetBSD and OpenBSD
+  - Add additional cross-platform unit tests
 
 * 0.1.1 (2024-09-17)
   - Fix bug in `Interface::new` method

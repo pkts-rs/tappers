@@ -5,7 +5,7 @@
 **Tappers is a library for creating, managing and exchanging packets on TUN/TAP interfaces.**
 
 `tappers` provides both platform-specific and cross-platform APIs for managing TUN/TAP devices and
-virtual ethernet pairs. It supports the following features for each platform:
+virtual ethernet (vETH) pairs. It supports the following features for each platform:
 
 | Platform      | TUN  | TAP | vETH |
 | ------------- | ---- | --- | ---- |
@@ -20,9 +20,9 @@ virtual ethernet pairs. It supports the following features for each platform:
 | IllumOS       | ⬜   | ⬜  | N/A  |
 | AIX           | ⬜   | ⬜  | N/A  |
 
-`N/A` - platform does not have any virtual Ethernet implementation.
+`N/A` - platform does not provide any virtual Ethernet functionality.
 
-Note that this library is currently a work in progress--more platforms will be supported soon!
+Note that this library is currently a work in progress--more features and platforms will be supported soon!
 
 ## Feature Comparison to Other Libraries
 
@@ -147,8 +147,8 @@ at your option.
 
 ## Contributing
 
-`tappers` is open to contribution--feel free to submit an Issue or Pull Request if there's
-something you'd like to add to this library.
+`tappers` is open to contribution--feel free to submit an issue or pull request if there's
+something you'd like to add to the library.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
 `tappers` by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without

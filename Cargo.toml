@@ -1,10 +1,10 @@
 [package]
 name = "tappers"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
-description = "Cross-platform TUN and TAP interfaces"
+description = "Cross-platform TUN, TAP and vETH interfaces"
 # 1.66 - `std::os::fd` stabilized
 rust-version = "1.66" 
-version = "0.1.1"
+version = "0.2.0"
 license = "MIT OR Apache-2.0"
 edition = "2021"
 repository = "https://github.com/pkts-rs/tappers"

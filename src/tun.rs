@@ -16,6 +16,15 @@ use crate::{DeviceState, Interface};
 use crate::linux::TunImpl;
 #[cfg(target_os = "macos")]
 use crate::macos::TunImpl;
+#[cfg(any(
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "illumos",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "solaris"
+))]
+use crate::unix::TunImpl;
 #[cfg(target_os = "windows")]
 use crate::wintun::TunImpl;
 
@@ -171,6 +180,14 @@ mod tests {
         let tun1 = Tun::new().unwrap();
         let tun1_name = tun1.name().unwrap();
         assert!(tun1_name.exists().unwrap());
+    }
+
+    #[test]
+    fn not_exists() {
+        use std::ffi::OsStr;
+        let chosen_name = OsStr::new("tun24");
+        let iface = Interface::new(chosen_name).unwrap();
+        assert!(!iface.exists().unwrap());
     }
 
     #[test]

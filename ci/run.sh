@@ -12,18 +12,25 @@ RUST=${TOOLCHAIN}
 
 echo "Testing Rust ${RUST} on ${OS}"
 
-# FIXME: rustup often fails to download some artifacts due to network
-# issues, so we retry this N times.
-N=5
-n=0
-until [ $n -ge $N ]
-do
-    if rustup override set "${RUST}" ; then
-        break
-    fi
-    n=$((n+1))
-    sleep 1
-done
+case "${OS}" in
+    openbsd*)
+        # OpenBSD does not have rustup support
+        ;;
+    *)
+        # FIXME: rustup often fails to download some artifacts due to network
+        # issues, so we retry this N times.
+        N=5
+        n=0
+        until [ $n -ge $N ]
+        do
+            if rustup override set "${RUST}" ; then
+                break
+            fi
+            n=$((n+1))
+            sleep 1
+        done
+        ;;
+esac
 
 case "${OS}" in
     windows*)

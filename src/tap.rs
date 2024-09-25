@@ -16,6 +16,15 @@ use crate::{DeviceState, Interface};
 use crate::linux::TapImpl;
 #[cfg(target_os = "macos")]
 use crate::macos::TapImpl;
+#[cfg(any(
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "illumos",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "solaris"
+))]
+use crate::unix::TapImpl;
 
 /// A cross-platform TaP interface.
 pub struct Tap {
@@ -149,10 +158,10 @@ mod tests {
         let chosen_name = unsafe { CStr::from_ptr(b"tap24\0".as_ptr() as *const i8) };
 
         let iface = Interface::from_cstr(chosen_name).unwrap();
-        let tun = Tap::new_named(iface).unwrap();
-        let tun_iface = tun.name().unwrap();
+        let tap = Tap::new_named(iface).unwrap();
+        let tap_iface = tap.name().unwrap();
 
-        assert_eq!(chosen_name, tun_iface.name_cstr());
+        assert_eq!(chosen_name, tap_iface.name_cstr());
     }
 
     #[test]
@@ -168,6 +177,14 @@ mod tests {
         let tap1 = Tap::new().unwrap();
         let tap1_name = tap1.name().unwrap();
         assert!(tap1_name.exists().unwrap());
+    }
+
+    #[test]
+    fn not_exists() {
+        use std::ffi::OsStr;
+        let chosen_name = OsStr::new("tap24");
+        let iface = Interface::new(chosen_name).unwrap();
+        assert!(!iface.exists().unwrap());
     }
 
     #[test]

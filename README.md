@@ -74,6 +74,13 @@ remained relatively stable since its inception.
 In short, neither TUN nor TAP interfaces are formally supported on MacOS, but `tappers` provides
 equivalent functionality for its `Tun`/`Tap` types via `utun` and `feth`.
 
+### DragonFly BSD
+
+DragonFly does not load the needed `if_tap` module by default.
+Make sure to load this using `kldload if_tap` prior to running any program that uses `tappers`.
+Note that this will only load
+the TAP kernel module until the next boot; refer to DragonFly documentation for further information on how to persistently load modules.
+
 ### Android
 
 Android techincally does offer the `/dev/net/tun` API, but it is only accessible to applications

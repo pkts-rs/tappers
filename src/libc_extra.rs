@@ -1,5 +1,21 @@
 use std::mem;
 
+#[cfg(target_os = "freebsd")]
+extern "C" {
+    pub fn fdevname_r(
+        fd: libc::c_int,
+        buf: *mut libc::c_char,
+        len: libc::c_int,
+    ) -> *const libc::c_char;
+}
+
+/*
+#[cfg(target_os = "dragonfly")]
+extern "C" {
+    pub fn fdevname_r(fd: libc::c_int, buf: *mut libc::c_char, len: libc::c_int) -> libc::c_int;
+}
+*/
+
 pub const IOCPARM_MASK: u64 = 0x1fff; // parameter length, at most 13 bits
 pub const IOCPARM_SHIFT: usize = 16;
 pub const IOCGROUP_SHIFT: usize = 8;
@@ -182,18 +198,9 @@ pub struct ifreq_buffer {
     pub buffer: *mut libc::c_void,
 }
 
-#[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
-extern "C" {
-    pub fn fdevname_r(
-        fd: libc::c_int,
-        buf: *mut libc::c_char,
-        len: libc::c_int,
-    ) -> *const libc::c_char;
-}
-
-#[cfg(any(target_os = "dragonfly", target_os = "openbsd", target_os = "netbsd"))]
+#[cfg(any(target_os = "openbsd", target_os = "netbsd"))]
 pub const SIOCIFCREATE: libc::c_ulong = _IOW::<ifreq>(b'i', 122);
-#[cfg(target_os = "freebsd")]
+#[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
 pub const SIOCIFCREATE2: libc::c_ulong = _IOWR::<ifreq>(b'i', 124);
 #[cfg(any(
     target_os = "dragonfly",

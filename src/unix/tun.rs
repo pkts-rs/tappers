@@ -38,7 +38,7 @@ impl Tun {
         Self::new_impl()
     }
 
-    #[cfg(any(target_os = "netbsd", target_os = "openbsd"))]
+    #[cfg(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))]
     #[inline]
     fn new_impl() -> io::Result<Self> {
         Self::new_from_loop()
@@ -96,13 +96,7 @@ impl Tun {
         }
     }
 
-    #[cfg(target_os = "dragonfly")]
-    #[inline]
-    fn new_impl() -> io::Result<Self> {
-        Self::new_from_cloned()
-    }
-
-    #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
+    #[cfg(target_os = "freebsd")]
     fn new_from_cloned() -> io::Result<Self> {
         let tun_ptr = b"/dev/tun\0".as_ptr() as *const i8;
         // TODO: unify `ErrorKind`s returned
@@ -126,12 +120,12 @@ impl Tun {
         })
     }
 
-    #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
-    fn tun_devname(tap_fd: RawFd) -> io::Result<Interface> {
+    #[cfg(target_os = "freebsd")]
+    fn tun_devname(tun_fd: RawFd) -> io::Result<Interface> {
         unsafe {
             let mut name = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
             if fdevname_r(
-                tap_fd,
+                tun_fd,
                 name.as_mut_ptr() as *mut i8,
                 Interface::MAX_INTERFACE_NAME_LEN as i32,
             )
@@ -143,6 +137,25 @@ impl Tun {
             Ok(Interface::from_raw(name))
         }
     }
+
+    /*
+    #[cfg(target_os = "dragonfly")]
+    fn tun_devname(tun_fd: RawFd) -> io::Result<Interface> {
+        unsafe {
+            let mut name = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
+            if fdevname_r(
+                tun_fd,
+                name.as_mut_ptr() as *mut i8,
+                Interface::MAX_INTERFACE_NAME_LEN as i32,
+            ) != 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+
+            Ok(Interface::from_raw(name))
+        }
+    }
+    */
 
     /// Opens or creates a TUN device of the given name.
     pub fn new_named(iface: Interface) -> io::Result<Self> {
@@ -163,12 +176,12 @@ impl Tun {
         let mut req = ifreq_empty();
         req.ifr_name = iface.name_raw_i8();
 
-        // FreeBSD returns ENXIO ("Device not configured") for SIOCIFCREATE and uses SIOCIFCREATE2
-        // instead within its `ifconfig` implementation. It passes no argument in the `ifr_ifru`
-        // field.
-        #[cfg(not(target_os = "freebsd"))]
+        // FreeBSD and DragonFly BSD return ENXIO ("Device not configured") for SIOCIFCREATE and
+        // use SIOCIFCREATE2 instead within their `ifconfig` implementation. It passes no argument
+        // in the `ifr_ifru` field.
+        #[cfg(not(any(target_os = "dragonfly", target_os = "freebsd")))]
         const IOCTL_CREATE: u64 = SIOCIFCREATE;
-        #[cfg(target_os = "freebsd")]
+        #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
         const IOCTL_CREATE: u64 = SIOCIFCREATE2;
 
         if unsafe { libc::ioctl(ctrl_fd, IOCTL_CREATE, ptr::addr_of_mut!(req)) } < 0 {
@@ -210,7 +223,7 @@ impl Tun {
 
     #[inline]
     fn new_numbered_impl(tun_number: u32, unique: bool) -> io::Result<Self> {
-        // "tap" + u32 + \0 won't overflow IFNAMSIZ
+        // "tun" + u32 + \0 won't overflow IFNAMSIZ
         let tun_number = tun_number.to_string();
         let tun_name = [b"tun", tun_number.as_bytes()].concat();
 
@@ -484,6 +497,16 @@ impl Tun {
     }
 
     #[inline]
+    fn destroy_iface(fd: RawFd, iface: Interface) {
+        let mut req = ifreq_empty();
+        req.ifr_name = iface.name_raw_i8();
+
+        unsafe {
+            debug_assert_eq!(libc::ioctl(fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)), 0);
+        }
+    }
+
+    #[inline]
     fn ctrl_fd() -> RawFd {
         let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
 
@@ -495,16 +518,6 @@ impl Tun {
     fn close_fd(fd: RawFd) {
         unsafe {
             debug_assert_eq!(libc::close(fd), 0);
-        }
-    }
-
-    #[inline]
-    fn destroy_iface(fd: RawFd, iface: Interface) {
-        let mut req = ifreq_empty();
-        req.ifr_name = iface.name_raw_i8();
-
-        unsafe {
-            debug_assert_eq!(libc::ioctl(fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)), 0);
         }
     }
 }

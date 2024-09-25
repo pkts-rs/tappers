@@ -30,14 +30,19 @@ impl Tap {
         Self::new_impl()
     }
 
-    // NetBSD *does* have a `/dev/tap` cloned interface, but it makes only non-persistent TUN
-    // devices...
-    #[cfg(any(target_os = "openbsd", target_os = "netbsd"))]
+    // OpenBSD has no `/dev/tap` cloning interface, so we loop through devices until we find one
+    // that isn't in use.
+    //
+    // NetBSD/DragonFly BSD *do* have a `/dev/tap` cloned interface, but it makes only non-persistent TAP
+    // devices so we don't make use of it.
+    #[cfg(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))]
     #[inline]
     fn new_impl() -> io::Result<Self> {
         Self::new_from_loop()
     }
 
+    // FreeBSD does have a `/dev/tap` cloning interface, but its use can be disabled via sysctl. We
+    // check this sysctl and either do or don't use `/dev/tap` accordingly.
     #[cfg(target_os = "freebsd")]
     #[inline]
     fn new_impl() -> io::Result<Self> {
@@ -66,13 +71,8 @@ impl Tap {
         }
     }
 
-    #[cfg(target_os = "dragonfly")]
-    #[inline]
-    fn new_impl() -> io::Result<Self> {
-        Self::new_from_cloned()
-    }
-
-    #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
+    /// Clones a new TAP interface from `/dev/tap`.
+    #[cfg(target_os = "freebsd")]
     fn new_from_cloned() -> io::Result<Self> {
         let tap_ptr = b"/dev/tap\0".as_ptr() as *const i8;
         // TODO: unify `ErrorKind`s returned
@@ -96,7 +96,8 @@ impl Tap {
         })
     }
 
-    #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
+    /// Gets the name of the device that `tap_fd` is connected to.
+    #[cfg(target_os = "freebsd")]
     fn tap_devname(tap_fd: RawFd) -> io::Result<Interface> {
         unsafe {
             let mut name = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
@@ -115,6 +116,23 @@ impl Tap {
     }
 
     /*
+    #[cfg(target_os = "dragonfly")]
+    fn tap_devname(tap_fd: RawFd) -> io::Result<Interface> {
+        unsafe {
+            let mut name = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
+            if fdevname_r(
+                tap_fd,
+                name.as_mut_ptr() as *mut i8,
+                Interface::MAX_INTERFACE_NAME_LEN as i32,
+            ) != 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+
+            Ok(Interface::from_raw(name))
+        }
+    }
+
     #[cfg(target_os = "netbsd")]
     fn tap_devname(tap_fd: RawFd) -> io::Result<Interface> {
         // NOTE: AIX does the same:
@@ -132,12 +150,11 @@ impl Tap {
     }
     */
 
-    #[cfg(any(target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))]
     fn new_from_loop() -> io::Result<Self> {
         // Some BSD variants have no support for auto-selection of an unused TAP number, so we need
         // to loop here.
 
-        for i in 3..1000 {
+        for i in 4..1000 {
             // Max TAP number is 999
             match Self::new_numbered_impl(i, true) {
                 Err(e)
@@ -176,12 +193,12 @@ impl Tap {
         let mut req = ifreq_empty();
         req.ifr_name = iface.name_raw_i8();
 
-        // FreeBSD returns ENXIO ("Device not configured") for SIOCIFCREATE and uses SIOCIFCREATE2
-        // instead within its `ifconfig` implementation. It passes no argument in the `ifr_ifru`
-        // field.
-        #[cfg(not(target_os = "freebsd"))]
+        // FreeBSD and DragonFly BSD return ENXIO ("Device not configured") for SIOCIFCREATE and
+        // use SIOCIFCREATE2 instead within their `ifconfig` implementation. It passes no argument
+        // in the `ifr_ifru` field.
+        #[cfg(not(any(target_os = "dragonfly", target_os = "freebsd")))]
         const IOCTL_CREATE: u64 = SIOCIFCREATE;
-        #[cfg(target_os = "freebsd")]
+        #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
         const IOCTL_CREATE: u64 = SIOCIFCREATE2;
 
         if unsafe { libc::ioctl(ctrl_fd, IOCTL_CREATE, ptr::addr_of_mut!(req)) } < 0 {
@@ -446,6 +463,7 @@ impl Tap {
 impl Drop for Tap {
     fn drop(&mut self) {
         Self::close_fd(self.fd);
+
         if !self.persistent {
             let ctrl_fd = Self::ctrl_fd();
             Self::destroy_iface(ctrl_fd, self.iface);

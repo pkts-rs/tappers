@@ -19,17 +19,19 @@
 pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
-//#[cfg(target_os = "netbsd")]
-//pub mod netbsd;
-//#[cfg(target_os = "openbsd")]
-//pub mod openbsd;
-//#[cfg(target_os = "solaris")]
-//pub mod solaris;
-//#[cfg(all(target_os = "windows", feature = "tapwin6"))]
-//pub mod tapwin6;
+#[cfg(any(
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "illumos",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "solaris"
+))]
+pub mod unix;
 #[cfg(all(target_os = "windows", feature = "wintun"))]
 pub mod wintun;
 
+mod libc_extra;
 #[cfg(not(target_os = "windows"))]
 mod tap;
 #[cfg(any(
@@ -153,6 +155,14 @@ impl Interface {
         Self::new_raw(if_name.to_bytes())
     }
 
+    #[cfg(not(target_os = "windows"))]
+    pub unsafe fn from_raw(arr: [u8; Self::MAX_INTERFACE_NAME_LEN + 1]) -> Self {
+        Self {
+            name: arr,
+            is_catchall: false,
+        }
+    }
+
     #[cfg(target_os = "windows")]
     #[inline]
     fn new_inner(if_name: impl AsRef<OsStr>) -> io::Result<Self> {
@@ -173,6 +183,7 @@ impl Interface {
         Self::new_raw(if_name.as_ref().as_bytes())
     }
 
+    // TODO: this should be `from_slice`
     #[cfg(not(target_os = "windows"))]
     #[inline]
     fn new_raw(if_name: &[u8]) -> io::Result<Self> {
@@ -236,6 +247,13 @@ impl Interface {
                 let not_found_sys = false;
                 #[cfg(target_os = "macos")]
                 let not_found_sys = e.raw_os_error() == Some(libc::ENXIO);
+                #[cfg(any(
+                    target_os = "dragonfly",
+                    target_os = "freebsd",
+                    target_os = "netbsd",
+                    target_os = "openbsd"
+                ))]
+                let not_found_sys = e.raw_os_error() == Some(libc::ENXIO);
 
                 if not_found || not_found_sys {
                     Ok(false)
@@ -293,6 +311,12 @@ impl Interface {
     fn name_impl(&self) -> OsString {
         let length = self.name.iter().position(|c| *c == 0).unwrap();
         OsString::from_wide(&self.name[..length])
+    }
+
+    /// Returns the interface name as an array of bytes (i.e. unsigned 8-bit integers).
+    #[cfg(not(target_os = "windows"))]
+    pub fn name_raw(&self) -> [u8; Self::MAX_INTERFACE_NAME_LEN + 1] {
+        self.name
     }
 
     /// Returns the interface name as an array of `char` bytes (i.e. signed 8-bit integers).

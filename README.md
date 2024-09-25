@@ -4,25 +4,23 @@
 
 **Tappers is a library for creating, managing and exchanging packets on TUN/TAP interfaces.**
 
-`tappers` provides both platform-specific and cross-platform APIs for managing TUN and TAP
-devices. It supports the following features for each platform:
+`tappers` provides both platform-specific and cross-platform APIs for managing TUN/TAP devices and
+virtual ethernet pairs. It supports the following features for each platform:
 
-| Platform | TUN  | TAP | Kernel BPF |
-| -------- | ---- | --- | ---------- |
-| Linux    | ✅   | ✅  | ⬜         |
-| MacOS    | ✅   | ✅  | ⬜         |
-| Windows  | ✅   | ⬜  | N/A        |
-| FreeBSD  | ⬜   | ⬜  | ⬜         |
-| OpenBSD  | ⬜   | ⬜  | ⬜         |
-| NetBSD   | ⬜   | ⬜  | ⬜         |
-| Solaris  | ⬜   | ⬜  | ⬜         |
-| IllumOS  | ⬜   | ⬜  | ⬜         |
-| Android  | ⬜ * | ⬜* | N/A        |
-| iOS      | ⬜   | N/A | N/A        |
+| Platform      | TUN  | TAP | vETH |
+| ------------- | ---- | --- | ---- |
+| Linux         | ✅   | ✅  | ⬜   |
+| MacOS         | ✅   | ✅  | ⬜   |
+| Windows       | ✅   | ⬜  | N/A  |
+| FreeBSD       | ✅   | ✅  | ⬜   |
+| OpenBSD       | ✅   | ✅  | ⬜   |
+| NetBSD        | ✅   | ✅  | ⬜   |
+| DragonFly BSD | ✅   | ✅  | N/A  |
+| Solaris       | ⬜   | ⬜  | N/A  |
+| IllumOS       | ⬜   | ⬜  | N/A  |
+| AIX           | ⬜   | ⬜  | N/A  |
 
-`N/A` - platform does not support specified feature
-
-`*` - only supported on rooted Android
+`N/A` - platform does not have any virtual Ethernet implementation.
 
 Note that this library is currently a work in progress--more platforms will be supported soon!
 
@@ -41,14 +39,14 @@ Note that this library is currently a work in progress--more platforms will be s
 | TUN/TAP support for Linux                   | ✅        | TUN only       | TUN only         | ✅         | ✅        | ✅          |
 | TUN/TAP support for MacOS                   | ✅        | TUN only       | TUN only         | ⬜         | TUN only  | ⬜          |
 | TUN/TAP support for Windows                 | TUN only  | TUN only       | TUN only         | ⬜         | ⬜        | ⬜          |
-| TUN/TAP support for *BSD                    | Planned   | ⬜             | FreeBSD/TUN only | ⬜         | OpenBSD   | ⬜          |
+| TUN/TAP support for *BSD                    | ✅        | ⬜             | FreeBSD/TUN only | ⬜         | OpenBSD   | ⬜          |
 | TUN/TAP support for Solaris/IllumOS         | ⬜        | ⬜             | ⬜               | ⬜         | ⬜        | ⬜          |
 | non-`async` support                         | ✅        | ✅             | ✅               | ✅         | ✅        | ⬜          |
 | `async` support                             | Planned   | ✅             | Unix only        | ✅         | ⬜        | ✅          |
 
 ## Additional Notes on Platform Support
 
-Not all platforms implement the standard `/dev/net/tun` interface for TUN/TAP creation; there are
+Not all platforms implement the standard `/dev/tun` interface for TUN/TAP creation; there are
 special instances where TUN and TAP devices are provided either through the use of custom drivers
 (such as for Windows) or via special alternative network APIs (such as for MacOS). These are
 outlined below. The TL;DR is that *nix platforms are supported natively, Windows is supported
@@ -86,15 +84,16 @@ from the device is routed. If your intent is to create a VPN or proxy applicatio
 find `VpnService` to be better suited to your needs than this crate. Note that `VpnService` has
 no native API equivalent in Android, so `tappers` does not currently wrap it.
 
-For the (relatively slimmer) use case where users would like to run code on rooted Android devices,
-`tappers` provides bindings to Android's TUN/TAP interfaces.
-
 ### iOS
 
 iOS provides the `NEPacketTunnelProvider` API for VPN/proxy applications (similar to Android's
 `VpnProvider`). iOS does not support the creation of arbitrary TUN interfaces, and it provides no
 support for TAP interfaces. `NEPacketTunnelProvider` has no native API equivalent, so `tappers`
 does not currently wrap it.
+
+## Virtual Ethernet (vETH) Pairs
+
+Virtual Ethernet (or vETH) pairs can be thought of as a
 
 ## `async` Runtime Support
 

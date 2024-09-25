@@ -1,6 +1,9 @@
 # Release History:
 
-* 0.1.1 (2023-03-23)
+* 0.2.0
+  - Add TUN/TAP support for *BSD variants
+
+* 0.1.1 (2024-09-17)
   - Fix bug in `Interface::new` method
   - Fix bug in getting/setting nonblocking for MacOS TUN, TAP
 

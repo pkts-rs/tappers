@@ -19,7 +19,9 @@ use std::io;
 pub use feth::FethTap;
 pub use utun::Utun;
 
-use crate::{DeviceState, Interface};
+use std::net::IpAddr;
+
+use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
 pub(crate) struct TunImpl {
     tun: Utun,
@@ -36,6 +38,21 @@ impl TunImpl {
         Ok(Self {
             tun: Utun::new_named(if_name)?,
         })
+    }
+
+    #[inline]
+    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
+        self.tun.addrs()
+    }
+
+    #[inline]
+    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
+        self.tun.add_addr(req)
+    }
+
+    #[inline]
+    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
+        self.tun.remove_addr(addr)
     }
 
     #[inline]
@@ -79,7 +96,6 @@ pub(crate) struct TapImpl {
 }
 
 impl TapImpl {
-    /// Creates a new, unique TUN device.
     #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Self {
@@ -87,7 +103,6 @@ impl TapImpl {
         })
     }
 
-    /// Opens or creates a TUN device of the given name.
     #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
         Ok(Self {
@@ -95,7 +110,21 @@ impl TapImpl {
         })
     }
 
-    /// Retrieves the interface name of the TUN device.
+    #[inline]
+    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
+        self.tap.addrs()
+    }
+
+    #[inline]
+    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
+        self.tap.add_addr(req)
+    }
+
+    #[inline]
+    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
+        self.tap.remove_addr(addr)
+    }
+
     #[inline]
     pub fn name(&self) -> io::Result<Interface> {
         self.tap.name()

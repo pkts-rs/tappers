@@ -1,5 +1,9 @@
 # Release History:
 
+* 0.3.0
+  - Add IP address assignment/removal support for all but Windows
+  - Add unit tests for `send()`/`recv()` and address assignment
+
 * 0.2.0 (2024-09-25)
   - Add TUN/TAP support for *BSD variants
   - Add CI for DragonFly BSD, FreeBSD, NetBSD and OpenBSD

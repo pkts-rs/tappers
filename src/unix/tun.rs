@@ -8,10 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::net::IpAddr;
 use std::os::fd::RawFd;
 use std::{array, io, ptr};
 
-use crate::{DeviceState, Interface};
+use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
 use super::ifreq_empty;
 use crate::libc_extra::*;
@@ -237,6 +238,24 @@ impl Tun {
             }))
         };
         Self::new_named_impl(iface, unique)
+    }
+
+    /// Retrieves the network-layer addresses assigned to the interface.
+    #[inline]
+    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
+        self.name()?.addrs()
+    }
+
+    /// Adds the specified network-layer address to the interface.
+    #[inline]
+    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
+        self.name()?.add_addr(req)
+    }
+
+    /// Removes the specified network-layer address from the interface.
+    #[inline]
+    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
+        self.name()?.remove_addr(addr)
     }
 
     /// Sets the persistence of the TUN interface.

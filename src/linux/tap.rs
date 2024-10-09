@@ -9,10 +9,11 @@
 // except according to those terms.
 
 use std::ffi::CStr;
+use std::net::IpAddr;
 use std::os::fd::RawFd;
 use std::{io, ptr};
 
-use crate::{DeviceState, Interface};
+use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
 use super::DEV_NET_TUN;
 
@@ -52,10 +53,9 @@ impl Tap {
         }
 
         if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            unsafe {
-                libc::close(fd);
-            }
-            return Err(io::Error::last_os_error());
+            let err = io::Error::last_os_error();
+            Self::close_fd(fd);
+            return Err(err);
         }
 
         Ok(Self { fd })
@@ -79,10 +79,9 @@ impl Tap {
         }
 
         if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            unsafe {
-                libc::close(fd);
-            }
-            return Err(io::Error::last_os_error());
+            let err = io::Error::last_os_error();
+            Self::close_fd(fd);
+            return Err(err);
         }
 
         Ok(Self { fd })
@@ -105,10 +104,9 @@ impl Tap {
         }
 
         if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            unsafe {
-                libc::close(fd);
-            }
-            return Err(io::Error::last_os_error());
+            let err = io::Error::last_os_error();
+            Self::close_fd(fd);
+            return Err(err);
         }
 
         Ok(Self { fd })
@@ -164,18 +162,12 @@ impl Tap {
             return Err(io::Error::last_os_error());
         }
 
-        unsafe {
-            match libc::ioctl(ctrl_fd, libc::SIOCSIFNAME, ptr::addr_of_mut!(req)) {
-                0.. => {
-                    libc::close(ctrl_fd);
-                    Ok(())
-                }
-                _ => {
-                    let err = io::Error::last_os_error();
-                    libc::close(ctrl_fd);
-                    Err(err)
-                }
-            }
+        let res = unsafe { libc::ioctl(ctrl_fd, libc::SIOCSIFNAME, ptr::addr_of_mut!(req)) };
+        let err = io::Error::last_os_error();
+        Self::close_fd(ctrl_fd);
+        match res {
+            0 => Ok(()),
+            _ => Err(err),
         }
     }
 
@@ -223,18 +215,12 @@ impl Tap {
             return Err(io::Error::last_os_error());
         }
 
-        unsafe {
-            match libc::ioctl(ctrl_fd, libc::SIOCSIFFLAGS, ptr::addr_of_mut!(req)) {
-                0.. => {
-                    libc::close(ctrl_fd);
-                    Ok(())
-                }
-                _ => {
-                    let err = io::Error::last_os_error();
-                    libc::close(ctrl_fd);
-                    Err(err)
-                }
-            }
+        let res = unsafe { libc::ioctl(ctrl_fd, libc::SIOCSIFFLAGS, ptr::addr_of_mut!(req)) };
+        let err = io::Error::last_os_error();
+        Self::close_fd(ctrl_fd);
+        match res {
+            0 => Ok(()),
+            _ => Err(err),
         }
     }
 
@@ -252,26 +238,21 @@ impl Tap {
             return Err(io::Error::last_os_error());
         }
 
-        unsafe {
-            match libc::ioctl(ctrl_fd, libc::SIOCGIFMTU, ptr::addr_of_mut!(req)) {
-                0.. => {
-                    libc::close(ctrl_fd);
-
-                    if req.ifr_ifru.ifru_mtu < 0 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            "unexpected negative MTU",
-                        ));
-                    }
-
-                    Ok(req.ifr_ifru.ifru_mtu as usize)
+        let res = unsafe { libc::ioctl(ctrl_fd, libc::SIOCGIFMTU, ptr::addr_of_mut!(req)) };
+        let err = io::Error::last_os_error();
+        Self::close_fd(ctrl_fd);
+        match res {
+            0 => {
+                if unsafe { req.ifr_ifru.ifru_mtu < 0 } {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "unexpected negative MTU",
+                    ));
                 }
-                _ => {
-                    let err = io::Error::last_os_error();
-                    libc::close(ctrl_fd);
-                    Err(err)
-                }
+
+                Ok(unsafe { req.ifr_ifru.ifru_mtu as usize })
             }
+            _ => Err(err),
         }
     }
 
@@ -295,18 +276,12 @@ impl Tap {
             return Err(io::Error::last_os_error());
         }
 
-        unsafe {
-            match libc::ioctl(ctrl_fd, libc::SIOCSIFMTU, ptr::addr_of_mut!(req)) {
-                0.. => {
-                    libc::close(ctrl_fd);
-                    Ok(())
-                }
-                _ => {
-                    let err = io::Error::last_os_error();
-                    libc::close(ctrl_fd);
-                    Err(err)
-                }
-            }
+        let res = unsafe { libc::ioctl(ctrl_fd, libc::SIOCSIFMTU, ptr::addr_of_mut!(req)) };
+        let err = io::Error::last_os_error();
+        Self::close_fd(ctrl_fd);
+        match res {
+            0 => Ok(()),
+            _ => Err(err),
         }
     }
 
@@ -389,7 +364,25 @@ impl Tap {
         }
     }
 
-    /// Reads a single packet from the TAP device.
+    /// Retrieves the network-layer addresses assigned to the interface.
+    #[inline]
+    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
+        self.name()?.addrs()
+    }
+
+    /// Adds the specified network-layer address to the interface.
+    #[inline]
+    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
+        self.name()?.add_addr(req)
+    }
+
+    /// Removes the specified network-layer address from the interface.
+    #[inline]
+    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
+        self.name()?.remove_addr(addr)
+    }
+
+    /// Receives a packet over the TAP device.
     pub fn recv(&self, data: &mut [u8]) -> io::Result<usize> {
         unsafe {
             match libc::read(self.fd, data.as_mut_ptr() as *mut libc::c_void, data.len()) {
@@ -399,13 +392,20 @@ impl Tap {
         }
     }
 
-    /// Writes a single packet to the TAP device.
+    /// Sends a packet out over the TAP device.
     pub fn send(&self, data: &[u8]) -> io::Result<usize> {
         unsafe {
             match libc::write(self.fd, data.as_ptr() as *const libc::c_void, data.len()) {
                 r @ 0.. => Ok(r as usize),
                 _ => Err(io::Error::last_os_error()),
             }
+        }
+    }
+
+    #[inline]
+    fn close_fd(fd: RawFd) {
+        unsafe {
+            debug_assert_eq!(libc::close(fd), 0);
         }
     }
 }

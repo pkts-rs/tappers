@@ -8,13 +8,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::net::IpAddr;
 use std::os::fd::RawFd;
 use std::{array, io, ptr};
 
-use crate::{DeviceState, Interface};
-
 use super::ifreq_empty;
+
 use crate::libc_extra::*;
+use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
 pub struct Tap {
     fd: RawFd,
@@ -114,41 +115,6 @@ impl Tap {
             Ok(Interface::from_raw(name))
         }
     }
-
-    /*
-    #[cfg(target_os = "dragonfly")]
-    fn tap_devname(tap_fd: RawFd) -> io::Result<Interface> {
-        unsafe {
-            let mut name = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
-            if fdevname_r(
-                tap_fd,
-                name.as_mut_ptr() as *mut i8,
-                Interface::MAX_INTERFACE_NAME_LEN as i32,
-            ) != 0
-            {
-                return Err(io::Error::last_os_error());
-            }
-
-            Ok(Interface::from_raw(name))
-        }
-    }
-
-    #[cfg(target_os = "netbsd")]
-    fn tap_devname(tap_fd: RawFd) -> io::Result<Interface> {
-        // NOTE: AIX does the same:
-        // https://www.ibm.com/docs/en/aix/7.2?topic=files-tap-special-file
-
-        const TAPGIFNAME: u64 = 0x40906500;
-
-        let mut req = ifreq_empty();
-
-        if unsafe { libc::ioctl(tap_fd, TAPGIFNAME, ptr::addr_of_mut!(req)) } < 0 {
-            return Err(io::Error::last_os_error())
-        }
-
-        Ok(unsafe { Interface::from_raw(array::from_fn(|i| req.ifr_name[i] as u8)) })
-    }
-    */
 
     fn new_from_loop() -> io::Result<Self> {
         // Some BSD variants have no support for auto-selection of an unused TAP number, so we need
@@ -254,6 +220,24 @@ impl Tap {
             }))
         };
         Self::new_named_impl(iface, unique)
+    }
+
+    /// Retrieves the network-layer addresses assigned to the interface.
+    #[inline]
+    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
+        self.name()?.addrs()
+    }
+
+    /// Adds the specified network-layer address to the interface.
+    #[inline]
+    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
+        self.name()?.add_addr(req)
+    }
+
+    /// Removes the specified network-layer address from the interface.
+    #[inline]
+    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
+        self.name()?.remove_addr(addr)
     }
 
     /// Sets the persistence of the TAP interface.

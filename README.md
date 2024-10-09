@@ -29,10 +29,10 @@ Note that this library is currently a work in progress--more features and platfo
 | Feature                                     | `tappers` | `tun`          | `tun2`           | `tun-tap`  | `utuntap` | `tokio-tun` |
 | ------------------------------------------- | --------- | -------------- | ---------------- | ---------- | --------- | ----------- |
 | Consistent packet format across platforms   | ✅        | ⬜             | ⬜               | Linux only | ⬜        | Linux only  |
-| Uses no subprocess commands (only `ioctl`s) | ✅        | ✅             | ⬜               | ✅         | ✅        | ✅          |
+| Uses no subprocess commands (only `ioctl`s) | ✅        | ⬜             | ⬜               | ✅         | ✅        | ✅          |
 | Supports multiple TUN/TAP creation          | ✅        | Not on Windows | ✅               | ✅         | ✅        | ✅          |
-| IPv4 routing support                        | Planned   | ✅             | ✅               | ⬜         | ⬜        | ✅          |
-| IPv6 routing support                        | Planned   | ⬜             | Linux only       | ⬜         | ⬜        | ⬜          |
+| IPv4 address assignment                     | ✅*       | ✅             | ✅               | ⬜         | ⬜        | ✅          |
+| IPv6 address assignment                     | ✅*       | ⬜             | Linux only       | ⬜         | ⬜        | ⬜          |
 | Unit testing for `TUN` devices              | ✅        | ✅             | ✅               | ✅         | ✅        | ⬜          |
 | Unit testing for `TAP` devices              | ✅        | ⬜             | ⬜               | ⬜         | ⬜        | ⬜          |
 | Cross-platform CI tests                     | ✅        | ⬜             | ⬜               | N/A        | ⬜        | N/A         |
@@ -43,6 +43,11 @@ Note that this library is currently a work in progress--more features and platfo
 | TUN/TAP support for Solaris/IllumOS         | ⬜        | ⬜             | ⬜               | ⬜         | ⬜        | ⬜          |
 | non-`async` support                         | ✅        | ✅             | ✅               | ✅         | ✅        | ⬜          |
 | `async` support                             | Planned   | ✅             | Unix only        | ✅         | ⬜        | ✅          |
+
+`*` - `tappers` doesn't currently support setting or deleting IP addresses in Windows. This is due
+to absent IPv6 support in certain Windows interface management APIs. This issue will be resolved
+once I find the time to reverse-engineer whatever ioctl calls the `netsh` command uses and add them
+to this library.
 
 ## Additional Notes on Platform Support
 

@@ -138,9 +138,6 @@ impl TunImpl {
         self.adapter.set_state(state)
     }
 
-    // Add/remove IP address
-
-    // get/set MTU available for IPv4, IPv6
     #[inline]
     pub fn mtu(&self) -> io::Result<usize> {
         self.adapter.mtu()

@@ -8,17 +8,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::net::IpAddr;
 use std::os::fd::{AsRawFd, RawFd};
 use std::{array, io, mem, ptr, str};
 
-use crate::{DeviceState, Interface};
+use crate::libc_extra::*;
+use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
 const UTUN_PREFIX: &[u8] = b"utun";
 const UTUN_CONTROL_NAME: &[u8] = b"com.apple.net.utun_control\0";
 
+/*
 const SIOCDIFPHYADDR: libc::c_ulong = 0x80206941;
 const SIOCGIFDEVMTU: libc::c_ulong = 0xc0206944;
-const SIOCIFDESTROY: libc::c_ulong = 0x80206979;
 const SIOCGIFFLAGS: libc::c_ulong = 0xc0206911;
 const SIOCSIFFLAGS: libc::c_ulong = 0x80206910;
 
@@ -27,6 +29,7 @@ const SIOCSIFDSTADDR: libc::c_ulong = 0x8020690e;
 
 const SIOCGIFNETMASK: libc::c_ulong = 0xc0206925;
 const SIOCSIFNETMASK: libc::c_ulong = 0x80206916;
+*/
 
 // We use a custom `iovec` struct here because we don't want to do a *const to *mut conversion
 #[repr(C)]
@@ -137,6 +140,25 @@ impl Utun {
         Ok(Self { fd })
     }
 
+    /// Retrieves the network-layer addresses assigned to the interface.
+    #[inline]
+    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
+        self.name()?.addrs()
+    }
+
+    /// Adds the specified network-layer address to the interface.
+    #[inline]
+    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
+        self.name()?.add_addr(req)
+    }
+
+    /// Removes the specified network-layer address from the interface.
+    #[inline]
+    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
+        self.name()?.remove_addr(addr)
+    }
+
+    /// Retrieves the name of the interface.
     pub fn name(&self) -> io::Result<Interface> {
         let mut name_buf = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
         let name_ptr = ptr::addr_of_mut!(name_buf) as *mut libc::c_void;
@@ -159,6 +181,7 @@ impl Utun {
         }
     }
 
+    /// Retrieves the Maximum Transmission Unit (MTU) of the TUN device.
     pub fn mtu(&self) -> io::Result<usize> {
         let if_name = self.name()?;
 
@@ -228,6 +251,7 @@ impl Utun {
         Ok(())
     }
 
+    /// Sends a packet out over the TUN device.
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         if buf.len() == 0 {
             return Err(io::Error::new(
@@ -266,6 +290,7 @@ impl Utun {
         }
     }
 
+    /// Receives a packet over the TUN device.
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         let mut family_prefix = [0u8; 4];
         let mut iov = [
@@ -332,7 +357,7 @@ impl Utun {
         }
 
         let msg = rtmsg {
-            m_rtm: libc::rt_msghdr {
+            m_rtm: rt_msghdr {
                 rtm_msglen: 0,
                 rtm_version: libc::RTM_VERSION,
                 rtm_type: libc::RTM_DELETE,
@@ -373,14 +398,6 @@ impl Utun {
     #[inline]
     fn destroy_impl(&self) -> io::Result<()> {
         self.set_state(DeviceState::Down)?;
-
-        let if_name = self.name()?;
-
-        let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_i8(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
-        };
-
         Self::close_fd(self.fd);
 
         // NOTE: MacOS has strange behavior for `utun` interfaces.
@@ -399,6 +416,7 @@ impl Utun {
         Ok(())
     }
 
+    #[inline]
     fn close_fd(fd: RawFd) {
         unsafe {
             debug_assert_eq!(libc::close(fd), 0);

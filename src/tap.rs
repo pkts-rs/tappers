@@ -8,9 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::io;
+use std::{io, net::IpAddr};
 
-use crate::{DeviceState, Interface};
+#[cfg(not(target_os = "windows"))]
+use crate::AddAddress;
+use crate::{AddressInfo, DeviceState, Interface};
 
 #[cfg(target_os = "linux")]
 use crate::linux::TapImpl;
@@ -32,17 +34,6 @@ pub struct Tap {
 }
 
 impl Tap {
-    // tun_exists(if_name) -> checks to see if the given TUN device exists
-
-    // *BSD and MacOS all strictly name interfaces, so we can infer type from iface name.
-    // Linux doesn't strictly name interfaces, but there appears to be a netlink call based on
-    // `strace ip -details link show` that returns interface type information.
-    // We can just call open() for Wintun and then immediately close the tunnel.
-
-    // new() -> creates a new TUN device with a unique device identifier
-
-    // new_named(if_name) -> opens the given TUN device, or creates one if doesn't exist
-
     // Note: Wintun TOCTOU? Only if other interface not created with Wintun but not `tappers`
     //
 
@@ -102,6 +93,28 @@ impl Tap {
     #[inline]
     pub fn nonblocking(&self) -> io::Result<bool> {
         self.inner.nonblocking()
+    }
+
+    /// Retrieves the network-layer addresses assigned to the interface.
+    ///
+    /// Most platforms automatically assign a link-local IPv6 address to TAP devices on creation.
+    /// Developers should take this into account and avoid the incorrect assumption that `addrs()`
+    /// will return only the addresses they have assigned via [`add_addr()`](Self::add_addr).
+    #[inline]
+    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
+        self.inner.addrs()
+    }
+
+    /// Assigns a network-layer address to the interface.
+    #[inline]
+    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
+        self.inner.add_addr(req)
+    }
+
+    /// Removes the specified network-layer address from the interface.
+    #[inline]
+    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
+        self.inner.remove_addr(addr)
     }
 
     /// Sends a packet out over the TAP device.
@@ -205,5 +218,149 @@ mod tests {
         assert_eq!(tap.nonblocking().unwrap(), true);
         tap.set_nonblocking(false).unwrap();
         assert_eq!(tap.nonblocking().unwrap(), false);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[cfg(test)]
+mod tests_unix {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    use super::*;
+
+    #[test]
+    fn add_ipv4() {
+        let tap1 = Tap::new().unwrap();
+        let ip1 = Ipv4Addr::new(10, 101, 0, 1);
+        tap1.add_addr(ip1).unwrap();
+
+        let addrs = tap1.addrs().unwrap();
+        assert!(addrs.iter().any(|a| a.address() == ip1));
+    }
+
+    #[test]
+    fn add_ipv4_multi() {
+        let tap1 = Tap::new().unwrap();
+
+        let ip1 = Ipv4Addr::new(10, 101, 0, 1);
+        tap1.add_addr(ip1).unwrap();
+
+        let ip2 = Ipv4Addr::new(10, 102, 0, 1);
+        tap1.add_addr(ip2).unwrap();
+
+        let addrs = tap1.addrs().unwrap();
+        assert!(addrs.iter().any(|a| a.address() == ip1));
+        assert!(addrs.iter().any(|a| a.address() == ip2));
+    }
+
+    #[test]
+    fn add_ipv6() {
+        let tap1 = Tap::new().unwrap();
+
+        let ip1 = Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8);
+        tap1.add_addr(ip1).unwrap();
+
+        let addrs = tap1.addrs().unwrap();
+        assert!(addrs.iter().any(|a| a.address() == ip1));
+    }
+
+    #[test]
+    fn add_ipv6_multi() {
+        let tap1 = Tap::new().unwrap();
+        let ip1 = Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8);
+        let ip2 = Ipv6Addr::new(32, 5, 3, 4, 5, 6, 7, 8);
+        tap1.add_addr(ip1).unwrap();
+        tap1.add_addr(ip2).unwrap();
+
+        let addrs = tap1.addrs().unwrap();
+        assert!(addrs.iter().any(|a| a.address() == ip1));
+        assert!(addrs.iter().any(|a| a.address() == ip2));
+    }
+
+    #[test]
+    fn add_ipv4_ipv6_multi() {
+        let tap1 = Tap::new().unwrap();
+        let ip1 = Ipv4Addr::new(10, 101, 0, 1);
+        let ip2 = Ipv4Addr::new(10, 102, 0, 1);
+        let ip3 = Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8);
+        let ip4 = Ipv6Addr::new(32, 5, 3, 4, 5, 6, 7, 8);
+        tap1.add_addr(ip1).unwrap();
+        tap1.add_addr(ip2).unwrap();
+        tap1.add_addr(ip3).unwrap();
+        tap1.add_addr(ip4).unwrap();
+        let addrs = tap1.addrs().unwrap();
+        assert!(addrs.iter().any(|a| a.address() == ip1));
+        assert!(addrs.iter().any(|a| a.address() == ip2));
+        assert!(addrs.iter().any(|a| a.address() == ip3));
+        assert!(addrs.iter().any(|a| a.address() == ip4));
+    }
+
+    #[test]
+    fn remove_ipv4() {
+        let tap1 = Tap::new().unwrap();
+        let ipv4 = Ipv4Addr::new(10, 101, 0, 1);
+        tap1.add_addr(IpAddr::V4(ipv4)).unwrap();
+        tap1.remove_addr(IpAddr::V4(ipv4)).unwrap();
+        let addrs = tap1.addrs().unwrap();
+        assert!(!addrs.iter().any(|a| a.address() == ipv4));
+    }
+
+    #[test]
+    fn remove_ipv4_multi() {
+        let tap1 = Tap::new().unwrap();
+        let ip1 = IpAddr::V4(Ipv4Addr::new(10, 101, 0, 1));
+        let ip2 = IpAddr::V4(Ipv4Addr::new(10, 102, 0, 1));
+        tap1.add_addr(ip1).unwrap();
+        tap1.add_addr(ip2).unwrap();
+        tap1.remove_addr(ip1).unwrap();
+        tap1.remove_addr(ip2).unwrap();
+        let addrs = tap1.addrs().unwrap();
+        assert!(!addrs.iter().any(|a| a.address() == ip1));
+        assert!(!addrs.iter().any(|a| a.address() == ip2));
+    }
+
+    #[test]
+    fn remove_ipv6() {
+        let tap1 = Tap::new().unwrap();
+        let ip1 = IpAddr::V6(Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8));
+        tap1.add_addr(ip1).unwrap();
+        tap1.remove_addr(ip1).unwrap();
+        let addrs = tap1.addrs().unwrap();
+        assert!(!addrs.iter().any(|a| a.address() == ip1));
+    }
+
+    #[test]
+    fn remove_ipv6_multi() {
+        let tap1 = Tap::new().unwrap();
+        let ip1 = IpAddr::V6(Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8));
+        let ip2 = IpAddr::V6(Ipv6Addr::new(2, 5, 3, 4, 5, 6, 7, 8));
+        tap1.add_addr(ip1).unwrap();
+        tap1.add_addr(ip2).unwrap();
+        tap1.remove_addr(ip1).unwrap();
+        tap1.remove_addr(ip2).unwrap();
+        let addrs = tap1.addrs().unwrap();
+        assert!(!addrs.iter().any(|a| a.address() == ip1));
+    }
+
+    #[test]
+    fn remove_ipv4_ipv6_multi() {
+        let tap1 = Tap::new().unwrap();
+        let ip1 = IpAddr::V6(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
+        let ip2 = IpAddr::V6(Ipv6Addr::new(2, 5, 3, 4, 5, 6, 7, 8));
+        let ip3 = IpAddr::V4(Ipv4Addr::new(10, 101, 0, 1));
+        let ip4 = IpAddr::V4(Ipv4Addr::new(10, 102, 0, 1));
+        tap1.add_addr(ip1).unwrap();
+        tap1.add_addr(ip2).unwrap();
+        tap1.add_addr(ip3).unwrap();
+        tap1.add_addr(ip4).unwrap();
+        tap1.remove_addr(ip3).unwrap();
+        tap1.remove_addr(ip1).unwrap();
+        tap1.remove_addr(ip4).unwrap();
+        tap1.remove_addr(ip2).unwrap();
+        let addrs = tap1.addrs().unwrap();
+        assert!(!addrs.iter().any(|a| a.address() == ip1));
+        assert!(!addrs.iter().any(|a| a.address() == ip2));
+        assert!(!addrs.iter().any(|a| a.address() == ip3));
+        assert!(!addrs.iter().any(|a| a.address() == ip4));
     }
 }

@@ -18,9 +18,9 @@ mod tun;
 pub use tap::Tap;
 pub use tun::Tun;
 
-use std::io;
+use std::{io, net::IpAddr};
 
-use crate::{DeviceState, Interface};
+use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
 pub(crate) const DEV_NET_TUN: *const i8 = b"/dev/net/tun\0".as_ptr() as *const i8;
 
@@ -48,6 +48,21 @@ impl TunImpl {
         Ok(Self {
             tun: Tun::new_named(if_name)?,
         })
+    }
+
+    #[inline]
+    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
+        self.tun.addrs()
+    }
+
+    #[inline]
+    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
+        self.tun.add_addr(req)
+    }
+
+    #[inline]
+    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
+        self.tun.remove_addr(addr)
     }
 
     #[inline]
@@ -101,6 +116,21 @@ impl TapImpl {
         Ok(Self {
             tap: Tap::new_named(if_name)?,
         })
+    }
+
+    #[inline]
+    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
+        self.tap.addrs()
+    }
+
+    #[inline]
+    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
+        self.tap.add_addr(req)
+    }
+
+    #[inline]
+    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
+        self.tap.remove_addr(addr)
     }
 
     #[inline]

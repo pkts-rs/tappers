@@ -4,11 +4,11 @@ authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 description = "Cross-platform TUN, TAP and vETH interfaces"
 # 1.66 - `std::os::fd` stabilized
 rust-version = "1.66" 
-version = "0.2.0"
+version = "0.3.0"
 license = "MIT OR Apache-2.0"
 edition = "2021"
 repository = "https://github.com/pkts-rs/tappers"
-keywords = ["tun", "tap", "tuntap", "tun_tap", "network"]
+keywords = ["tun", "tap", "tuntap", "tun_tap", "veth"]
 categories = ["network-programming"]
 
 [features]

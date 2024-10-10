@@ -27,12 +27,13 @@ const TUNSETIFF: u64 = 0x400454CA;
 const TUNSETOWNER: u64 = 0x400454CC;
 const TUNSETPERSIST: u64 = 0x400454CB;
 
+/// A TAP interface that includes Linux-specific functionality.
 pub struct Tap {
     fd: RawFd,
 }
 
 impl Tap {
-    /// Creates a new TAP device.
+    /// Creates a new, unique TAP device.
     ///
     /// The interface name associated with this TAP device is chosen by the system, and can be
     /// retrieved via the [`name()`](Self::name) method.
@@ -308,7 +309,7 @@ impl Tap {
         };
 
         if unsafe { libc::fcntl(self.fd, libc::F_SETFL, flags) } < 0 {
-            return Err(io::Error::last_os_error());
+            Err(io::Error::last_os_error())
         } else {
             Ok(())
         }

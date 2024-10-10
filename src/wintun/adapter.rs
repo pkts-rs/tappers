@@ -10,6 +10,7 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+#[cfg(not(doc))]
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::NonNull;
 use std::{io, ptr};
@@ -30,7 +31,7 @@ use super::{TunSession, WintunLoggerCallback};
 #[doc(hidden)]
 static WINTUN_API: OnceCell<Wintun> = OnceCell::new();
 
-/// A TUN interface adapter for Wintun.
+/// A Wintun TUN interface adapter that includes Windows-specific functionality.
 pub struct TunAdapter {
     pub(crate) adapter: NonNull<WintunAdapter>,
     pub(crate) if_name: Interface,

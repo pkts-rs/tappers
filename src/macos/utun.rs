@@ -40,6 +40,7 @@ pub struct iovec_const {
 }
 
 // MacOS `route` utility uses this buffer size
+#[cfg(not(doc))]
 #[repr(C)]
 #[allow(non_camel_case_types)]
 struct rtmsg {
@@ -51,6 +52,7 @@ pub struct Utun {
     fd: RawFd,
 }
 
+/// A UTUN interface that includes MacOS-specific TUN functionality.
 impl Utun {
     /// Creates a new TUN device.
     ///

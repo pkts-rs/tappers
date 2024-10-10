@@ -23,7 +23,7 @@ const NET_LINK_FAKE_LRO: *const i8 = b"net.link.fake.lro\0".as_ptr() as *const i
 const BPF_CREATE_ATTEMPTS: u32 = 1024;
 const BPF_BUFFER_LEN: i32 = 131072;
 
-/// Fake Ethernet ("feth") TAP device interface.
+/// Fake Ethernet ("feth") TAP device interface that includes MacOS-specific functionality.
 ///
 /// Apple does not support conventional TAP APIs, so this implementation instead uses the somewhat
 /// undocumented `IF_FAKE` or "feth" interface to act as a link-layer virtual network.

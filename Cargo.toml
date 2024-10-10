@@ -11,6 +11,10 @@ repository = "https://github.com/pkts-rs/tappers"
 keywords = ["tun", "tap", "tuntap", "tun_tap", "veth"]
 categories = ["network-programming"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = []
 # Enables loading of Wintun (default is load-time unless `wintun-runtime` is specified)
@@ -24,8 +28,5 @@ tapwin6-runtime = ["tapwin6"]
 
 [dependencies]
 libc = { version = "0.2" }
-
-[target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System", "Win32_System_LibraryLoader", "Win32_System_Threading"] }
-# To be removed once nightly OnceCell APIs are stabilized
 once_cell = { version = "1.19" }

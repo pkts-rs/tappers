@@ -9,14 +9,17 @@
 // except according to those terms.
 
 use std::net::IpAddr;
-use std::os::fd::RawFd;
+
 use std::{array, io, ptr};
 
+#[cfg(not(doc))]
 use super::ifreq_empty;
 
 use crate::libc_extra::*;
+use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
+/// A TAP device interface that includes BSD-/Solaris-specific functionality.
 pub struct Tap {
     fd: RawFd,
     persistent: bool,
@@ -145,7 +148,7 @@ impl Tap {
         Self::new_named_impl(iface, false)
     }
 
-    pub fn new_named_impl(iface: Interface, unique: bool) -> io::Result<Self> {
+    fn new_named_impl(iface: Interface, unique: bool) -> io::Result<Self> {
         let tap_name = iface.name_raw();
         if &tap_name[..3] != b"tap" {
             return Err(io::Error::new(
@@ -163,8 +166,10 @@ impl Tap {
         // use SIOCIFCREATE2 instead within their `ifconfig` implementation. It passes no argument
         // in the `ifr_ifru` field.
         #[cfg(not(any(target_os = "dragonfly", target_os = "freebsd")))]
+        #[cfg(not(doc))]
         const IOCTL_CREATE: u64 = SIOCIFCREATE;
         #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
+        #[cfg(not(doc))]
         const IOCTL_CREATE: u64 = SIOCIFCREATE2;
 
         if unsafe { libc::ioctl(ctrl_fd, IOCTL_CREATE, ptr::addr_of_mut!(req)) } < 0 {
@@ -242,9 +247,9 @@ impl Tap {
 
     /// Sets the persistence of the TAP interface.
     ///
-    /// If set to `false`, the TAP device will be destroyed once all file descriptor handles to it
-    /// have been closed. If set to `true`, the TAP device will persist until it is explicitly
-    /// closed or the system reboots. By default, persistence is set to `true`.
+    /// If set to `false`, the TAP device will be destroyed on drop. If set to `true`, the TAP
+    /// device will persist until it is explicitly closed or the system reboots. By default,
+    /// persistence is set to `false`.
     #[inline]
     pub fn set_persistent(&mut self, persistent: bool) -> io::Result<()> {
         self.persistent = persistent;

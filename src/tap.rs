@@ -28,7 +28,7 @@ use crate::macos::TapImpl;
 ))]
 use crate::unix::TapImpl;
 
-/// A cross-platform TaP interface.
+/// A cross-platform TAP interface, suitable for tunnelling link-layer packets.
 pub struct Tap {
     inner: TapImpl,
 }

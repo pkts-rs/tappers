@@ -9,10 +9,12 @@
 // except according to those terms.
 
 use std::net::IpAddr;
-use std::os::fd::{AsRawFd, RawFd};
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::AsRawFd;
 use std::{array, io, mem, ptr, str};
 
 use crate::libc_extra::*;
+use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
 const UTUN_PREFIX: &[u8] = b"utun";
@@ -40,6 +42,7 @@ pub struct iovec_const {
 }
 
 // MacOS `route` utility uses this buffer size
+#[cfg(not(doc))]
 #[repr(C)]
 #[allow(non_camel_case_types)]
 struct rtmsg {
@@ -51,6 +54,7 @@ pub struct Utun {
     fd: RawFd,
 }
 
+/// A UTUN interface that includes MacOS-specific TUN functionality.
 impl Utun {
     /// Creates a new TUN device.
     ///
@@ -430,6 +434,7 @@ impl Drop for Utun {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 impl AsRawFd for Utun {
     fn as_raw_fd(&self) -> RawFd {
         self.fd

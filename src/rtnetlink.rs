@@ -12,9 +12,9 @@
 
 use std::ffi::{CStr, CString};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::os::fd::RawFd;
 use std::{io, iter, mem, ptr};
 
+use crate::RawFd;
 use crate::{libc_extra::*, MacAddr};
 
 #[derive(Clone, Copy, Debug)]
@@ -79,8 +79,7 @@ impl NetlinkRequest {
         const HDR_LEN: usize = mem::size_of::<libc::nlmsghdr>();
 
         // First, reserve space for the Netlink header...
-        let mut v = Vec::new();
-        v.extend(iter::repeat(0).take(NLMSG_ALIGN(HDR_LEN)));
+        let mut v = vec![0; NLMSG_ALIGN(HDR_LEN)];
 
         // ...then write payload bytes...
         self.payload.serialize(&mut v);
@@ -313,10 +312,10 @@ impl AddressAttr {
             AddressAttr::Label(cstring) => {
                 let rta_type = libc::IFA_LABEL;
                 let rta_len = cstring.as_bytes_with_nul().len() + 4;
-                buf.extend(rta_len.to_ne_bytes());
+                buf.extend((rta_len as u16).to_ne_bytes());
                 buf.extend(rta_type.to_ne_bytes());
                 buf.extend(cstring.as_bytes_with_nul());
-                let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
+                let padded_len = NLMSG_ALIGN(rta_len) - rta_len;
                 buf.extend(iter::repeat(0).take(padded_len));
             }
             AddressAttr::Broadcast(ip_addr) => {
@@ -363,7 +362,7 @@ impl AddressAttr {
             }
             AddressAttr::CacheInfo(cache_info) => {
                 let rta_type = libc::IFA_CACHEINFO;
-                let rta_len = 4u16 + mem::size_of_val(&cache_info) as u16;
+                let rta_len = 4u16 + mem::size_of_val(cache_info) as u16;
                 buf.extend(rta_len.to_ne_bytes());
                 buf.extend(rta_type.to_ne_bytes());
                 let cache_info_bytes: [u8; mem::size_of::<AddrCacheInfo>()] =

@@ -72,6 +72,7 @@ The following are currently being worked on or are in the roadmap of near-future
   and flags, etc.)
 - Windows TAP supported via the openvpn `tap-windows6` driver
 - Windows support for programatically adding/removing IP addresses from interfaces
+- Solaris/IllumOS support
 
 If one of these features is particularly needed for your use case, feel free to open a Github issue
 and I'll try to prioritize its implementation.

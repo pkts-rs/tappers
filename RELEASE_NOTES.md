@@ -1,5 +1,10 @@
 # Release History:
 
+* 0.3.1
+  - Make docs show platform-specific APIS
+  - Update documentation
+  - Add examples to main README/module root
+
 * 0.3.0
   - Add IP address assignment/removal support for all but Windows
 

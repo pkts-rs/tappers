@@ -35,6 +35,84 @@ virtual ethernet (vETH) pairs. It supports the following features for each platf
 
 Note that this library is currently a work in progress--more features and platforms will be supported soon!
 
+## Getting Started
+
+To create a TUN device and begin synchronously receiving packets from it:
+ 
+```rust
+use std::io;
+use std::net::Ipv4Addr;
+use tappers::Tun;
+
+let mut tun = Tun::new()?; 
+tun.add_addr(Ipv4Addr::new(10, 100, 0, 1))?;
+tun.set_up()?; // Enables the TUN device to exchange packets
+
+let mut recv_buf = [0; 65536];
+
+loop {
+    let amount = tun.recv(&mut recv_buf)?;
+    println!("Received packet: {:?}", &recv_buf[0..amount]);
+}
+```
+
+Tappers additionally allows for more complex configuration of interfaces:
+
+```rust
+use std::io;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use tappers::{AddAddressV4, AddAddressV6, AddressInfo, DeviceState, Interface, Tap};
+
+// Select an existing (or new) TAP interface name to open
+let tap_name = Interface::new("tap10")?;
+
+// Open the TAP device named "tap10" (or create it if it doesn't exist)
+let mut tap = Tap::new_named(tap_name)?;
+
+// Add a new address with associated info to the TAP device
+let new_addr = Ipv4Addr::new(10, 100, 0, 1);
+let mut addr_req = AddAddressV4::new(new_addr);
+addr_req.set_netmask(24);
+addr_req.set_broadcast(Ipv4Addr::new(10, 100, 0, 255));
+
+tap.add_addr(addr_req)?;
+
+// Retrieve information on the IPv4/IPv6 addresses bound to the TAP device
+let addrs = tap.addrs()?;
+for addr_info in addrs {
+    println!("IP address: {}", addr_info.address());
+    if let Some(netmask) = addr_info.netmask() {
+        println!("Netmask: {}", netmask);
+    }
+    if let Some(broadcast) = addr_info.broadcast() {
+        println!("Broadcast: {}", broadcast);
+    }
+}
+
+// Remove an address from the TAP device
+tap.remove_addr(IpAddr::V4(new_addr))?;
+
+// Configure whether the TAP device performs non-blocking reads/writes
+tap.set_nonblocking(true)?;
+
+// Bring the device up to enable packet exchange
+tap.set_state(DeviceState::Up);
+
+let mut buf = [0; 65536];
+
+// Receive packets from the interface
+let amount = tap.recv(&mut buf)?;
+
+// Send packets over the interface
+let amount = tap.send(&buf[..amount])?;
+
+// Bring the device down to disable packet exchange
+tap.set_state(DeviceState::Down);
+
+// The TUN device represented by `tun` is automatically be removed from the system when dropped.
+```
+
+
 ## Feature Comparison to Similar Libraries
 
 | Feature                                     | `tappers` | `tun`          | `tun2`           | `tun-tap`  | `utuntap` | `tokio-tun` |

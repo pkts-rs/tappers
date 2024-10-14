@@ -9,11 +9,12 @@
 // except according to those terms.
 
 use std::net::IpAddr;
-use std::os::fd::RawFd;
 use std::{array, io, ptr};
 
+use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
+#[cfg(not(doc))]
 use super::ifreq_empty;
 use crate::libc_extra::*;
 
@@ -25,6 +26,7 @@ pub struct iovec_const {
     pub iov_len: libc::size_t,
 }
 
+/// A TUN device interface that includes BSD-/Solaris-specific functionality.
 pub struct Tun {
     fd: RawFd,
     persistent: bool,
@@ -181,8 +183,10 @@ impl Tun {
         // use SIOCIFCREATE2 instead within their `ifconfig` implementation. It passes no argument
         // in the `ifr_ifru` field.
         #[cfg(not(any(target_os = "dragonfly", target_os = "freebsd")))]
+        #[cfg(not(doc))]
         const IOCTL_CREATE: u64 = SIOCIFCREATE;
         #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
+        #[cfg(not(doc))]
         const IOCTL_CREATE: u64 = SIOCIFCREATE2;
 
         if unsafe { libc::ioctl(ctrl_fd, IOCTL_CREATE, ptr::addr_of_mut!(req)) } < 0 {
@@ -241,6 +245,11 @@ impl Tun {
     }
 
     /// Retrieves the network-layer addresses assigned to the interface.
+    ///
+    /// OpenBSD automatically assigns a link-layer IPv6 address (in addition to the specified IPv6
+    /// address) the first time an IPv6 address is assigned to a TUN device. As such, applications
+    /// **should not** rely on the assumption that the only addresses returned from this method are
+    /// those that were previously assigned via [`add_addr()`](Self::add_addr).
     #[inline]
     pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
         self.name()?.addrs()
@@ -260,9 +269,9 @@ impl Tun {
 
     /// Sets the persistence of the TUN interface.
     ///
-    /// If set to `false`, the TUN device will be destroyed once all file descriptor handles to it
-    /// have been closed. If set to `true`, the TUN device will persist until it is explicitly
-    /// closed or the system reboots. By default, persistence is set to `true`.
+    /// If set to `false`, the TUN device will be destroyed once the `Tun` device has been dropped.
+    /// If set to `true`, the TUN device will persist until it is explicitly closed or the system
+    /// reboots. By default, persistence is set to `false`.
     #[inline]
     pub fn set_persistent(&mut self, persistent: bool) -> io::Result<()> {
         self.persistent = persistent;

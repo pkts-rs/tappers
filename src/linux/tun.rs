@@ -10,9 +10,9 @@
 
 use std::ffi::CStr;
 use std::net::IpAddr;
-use std::os::fd::RawFd;
 use std::{io, ptr};
 
+use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
 use super::DEV_NET_TUN;
@@ -27,13 +27,16 @@ const TUNSETIFF: u64 = 0x400454CA;
 const TUNSETOWNER: u64 = 0x400454CC;
 const TUNSETPERSIST: u64 = 0x400454CB;
 
+/// A TUN interface that includes Linux-specific functionality.
 pub struct Tun {
     fd: RawFd,
 }
 
 impl Tun {
     /// Creates a new, unique TUN device.
-    #[inline]
+    ///
+    /// The interface name associated with this TUN device is chosen by the system, and can be
+    /// retrieved via the [`name()`](Self::name) method.
     pub fn new() -> io::Result<Self> {
         let flags = libc::IFF_TUN_EXCL | libc::IFF_TUN | libc::IFF_NO_PI;
 
@@ -111,8 +114,7 @@ impl Tun {
     ///
     /// If set to `false`, the TUN device will be destroyed once all file descriptor handles to it
     /// have been closed. If set to `true`, the TUN device will persist until it is explicitly
-    /// closed or the system reboots. By default, persistence is set to `true` unless
-    /// [`create_ephemeral()`](Self::create_ephemeral) is used.
+    /// closed or the system reboots. By default, persistence is set to `false`.
     pub fn set_persistent(&self, persistent: bool) -> io::Result<()> {
         let persist = match persistent {
             true => 1,
@@ -334,7 +336,7 @@ impl Tun {
         };
 
         if unsafe { libc::fcntl(self.fd, libc::F_SETFL, flags) } < 0 {
-            return Err(io::Error::last_os_error());
+            Err(io::Error::last_os_error())
         } else {
             Ok(())
         }
@@ -370,9 +372,9 @@ impl Tun {
 
     /// Assigns the TUN device to the given user ID, thereby enabling the user to perform operations
     /// on the device.
-    pub fn set_owner(&self, owner: libc::uid_t) -> io::Result<()> {
+    pub fn set_owner(&self, owner_id: u32) -> io::Result<()> {
         unsafe {
-            match libc::ioctl(self.fd, TUNSETOWNER, owner) {
+            match libc::ioctl(self.fd, TUNSETOWNER, owner_id) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -381,9 +383,9 @@ impl Tun {
 
     /// Assigns the TUN device to the given group ID, thereby enabling users in that group to
     /// perform operations on the device.
-    pub fn set_group(&self, group: libc::gid_t) -> io::Result<()> {
+    pub fn set_group(&self, group_id: u32) -> io::Result<()> {
         unsafe {
-            match libc::ioctl(self.fd, TUNSETGROUP, group) {
+            match libc::ioctl(self.fd, TUNSETGROUP, group_id) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }

@@ -8,14 +8,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! TUN/TAP interface for various Unix systems (*BSD variants, Solaris, IllumOS).
+//! TUN/TAP interface for various other Unix systems.
 //!
 //!
 //!
 //!
 
-pub mod tap;
-pub mod tun;
+mod tap;
+mod tun;
 
 pub use tap::Tap;
 pub use tun::Tun;
@@ -26,6 +26,7 @@ use std::{io, ptr};
 use crate::libc_extra::*;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
+#[cfg(not(doc))]
 #[inline]
 pub(crate) fn ifreq_empty() -> ifreq {
     ifreq {

@@ -37,7 +37,7 @@ use windows_sys::Win32::Foundation::HANDLE;
 #[cfg(not(target_os = "windows"))]
 use crate::AddressInfo;
 
-/// A cross-platform TUN interface.
+/// A cross-platform TUN interface, suitable for tunnelling network-layer packets.
 pub struct Tun {
     inner: TunImpl,
 }
@@ -78,6 +78,7 @@ impl Tun {
         self.inner.set_state(state)
     }
 
+    /// Sets the adapter state of the TUN device to "up".
     #[inline]
     pub fn set_up(&mut self) -> io::Result<()> {
         self.inner.set_state(DeviceState::Up)
@@ -163,6 +164,7 @@ impl Tun {
         self.inner.recv(buf)
     }
 
+    /// The HANDLE
     #[cfg(target_os = "windows")]
     #[inline]
     pub fn read_handle(&mut self) -> HANDLE {

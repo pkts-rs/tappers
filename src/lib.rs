@@ -8,30 +8,39 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Cross-platform TUN/TAP interfaces for Rust.
+//! Tappers is a networking library that provides cross-platform support for TUN, TAP and virtual
+//! Ethernet (vETH) interfaces in Rust.
 //!
-//!
-//!
+//! The [`Tun`] and [`Tap`] structs found in the root of this crate are designed to work across
+//! all supported platforms (Linux/MacOS/Windows/*BSD). Additional OS-specific functionality
+//! is provided via the [`linux`], [`macos`], [`unix`] and [`wintun`] modules.
 
-// TODO: documentation here
+// TODO: examples here
 
-#[cfg(target_os = "linux")]
+// TODO: handle EINTR where applicable
+// TODO: add CLOEXEC to all sockets
+
+// Show required OS/features on docs.rs.
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
+#[cfg(any(doc, target_os = "linux"))]
 pub mod linux;
-#[cfg(target_os = "macos")]
+#[cfg(any(doc, target_os = "macos"))]
 pub mod macos;
 #[cfg(any(
+    doc,
     target_os = "dragonfly",
     target_os = "freebsd",
-    target_os = "illumos",
+//    target_os = "illumos",
     target_os = "netbsd",
     target_os = "openbsd",
-    target_os = "solaris"
+//    target_os = "solaris"
 ))]
 pub mod unix;
-#[cfg(all(target_os = "windows", feature = "wintun"))]
+#[cfg(any(doc, all(target_os = "windows", feature = "wintun")))]
 pub mod wintun;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(doc, not(target_os = "windows")))]
 mod libc_extra;
 #[cfg(target_os = "linux")]
 mod rtnetlink;
@@ -45,23 +54,17 @@ mod rtnetlink;
 mod sysctl;
 #[cfg(not(target_os = "windows"))]
 mod tap;
-#[cfg(any(
-    not(target_os = "windows"),
-    all(target_os = "windows", feature = "wintun")
-))]
+#[cfg(any(not(target_os = "windows"), feature = "wintun"))]
 mod tun;
 
 #[cfg(not(target_os = "windows"))]
 pub use tap::Tap;
-#[cfg(any(
-    not(target_os = "windows"),
-    all(target_os = "windows", feature = "wintun")
-))]
+#[cfg(any(not(target_os = "windows"), feature = "wintun"))]
 pub use tun::Tun;
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 use std::cmp;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(doc, not(target_os = "windows")))]
 use std::ffi::CStr;
 use std::ffi::{OsStr, OsString};
 use std::fmt::{Debug, Display};
@@ -70,6 +73,8 @@ use std::mem;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::RawFd;
+#[cfg(all(doc, target_os = "windows"))]
+pub type RawFd = i32;
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "windows")]
@@ -391,11 +396,11 @@ impl From<AddAddressV6> for AddAddress {
 ///
 /// Intefaces can generally be configured to be either up (active) or down (inactive). [`Tun`] and
 /// [`Tap`] both allow this state to be set via the [`set_state()`](Tun::set_state) method.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeviceState {
     /// An activated device state.
     Up,
-    /// An inactivated device state.
+    /// A deactivated device state.
     Down,
 }
 
@@ -478,7 +483,8 @@ impl Interface {
     }
 
     #[cfg(not(target_os = "windows"))]
-    pub unsafe fn from_raw(arr: [u8; Self::MAX_INTERFACE_NAME_LEN + 1]) -> Self {
+    #[allow(unused)]
+    pub(crate) unsafe fn from_raw(arr: [u8; Self::MAX_INTERFACE_NAME_LEN + 1]) -> Self {
         Self {
             name: arr,
             is_catchall: false,
@@ -642,7 +648,7 @@ impl Interface {
     }
 
     /// Returns the interface name as an array of `char` bytes (i.e. signed 8-bit integers).
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(any(doc, not(target_os = "windows")))]
     pub fn name_raw_i8(&self) -> [i8; Self::MAX_INTERFACE_NAME_LEN + 1] {
         array::from_fn(|i| self.name[i] as i8)
     }
@@ -656,7 +662,7 @@ impl Interface {
     ///
     /// Otherwise, a returned error indicates that [`Interface`] does not correspond to a valid
     /// interface.
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(any(doc, not(target_os = "windows")))]
     #[inline]
     pub fn name_cstr(&self) -> &CStr {
         unsafe { CStr::from_ptr(self.name.as_ptr() as *const i8) }
@@ -665,14 +671,14 @@ impl Interface {
     // An interface may have multiple assigned IP addresses. This is referred to as multihoming (see
     // https://en.wikipedia.org/wiki/Multihoming).
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(any(doc, not(target_os = "windows")))]
     #[inline]
     pub(crate) fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
         self.addrs_impl() // GetAdaptersAddresses for Windows
     }
 
     #[cfg(target_os = "linux")]
-    pub fn addrs_impl(&self) -> io::Result<Vec<AddressInfo>> {
+    fn addrs_impl(&self) -> io::Result<Vec<AddressInfo>> {
         let index = self.index()?;
         let mut addrs = Vec::new();
 
@@ -856,7 +862,7 @@ impl Interface {
         target_os = "netbsd",
         target_os = "openbsd"
     ))]
-    pub fn addrs_impl(&self) -> io::Result<Vec<AddressInfo>> {
+    fn addrs_impl(&self) -> io::Result<Vec<AddressInfo>> {
         const MEMORY_MIN: usize = 2048;
         const MEMORY_MAX: usize = 16777216;
 
@@ -1718,7 +1724,7 @@ impl FromStr for MacAddr {
     }
 }
 
-/// An error in converting the format of an address.
+/// An error in converting data into a MAC address.
 ///
 /// This type encompasses errors in parsing either a `sockaddr_*` type or a string into an address.
 #[derive(Debug)]

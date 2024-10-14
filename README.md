@@ -44,17 +44,13 @@ use std::io;
 use std::net::Ipv4Addr;
 use tappers::Tun;
 
-// Create a new TUN device with a unique identifier
 let mut tun = Tun::new()?; 
-// Assign an IP address to the TUN device
 tun.add_addr(Ipv4Addr::new(10, 100, 0, 1))?;
-// Enable the TUN device to begin receiving packets
-tun.set_up()?;
+tun.set_up()?; // Enables the TUN device to exchange packets
 
 let mut recv_buf = [0; 65536];
 
 loop {
-    // Receive a single network-layer packet from the TUN device
     let amount = tun.recv(&mut recv_buf)?;
     println!("Received packet: {:?}", &recv_buf[0..amount]);
 }
@@ -70,7 +66,7 @@ use tappers::{AddAddressV4, AddAddressV6, AddressInfo, DeviceState, Interface, T
 // Select an existing (or new) TAP interface name to open
 let tap_name = Interface::new("tap10")?;
 
-// Open the TAP device of the name "tap10" (or create it if it doesn't exist)
+// Open the TAP device named "tap10" (or create it if it doesn't exist)
 let mut tap = Tap::new_named(tap_name)?;
 
 // Add a new address with associated info to the TAP device

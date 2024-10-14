@@ -26,17 +26,13 @@
 //! use std::net::Ipv4Addr;
 //! use tappers::Tun;
 //!
-//! // Create a new TUN device with a unique identifier
 //! let mut tun = Tun::new()?;
-//! // Assign an IP address to the TUN device
 //! tun.add_addr(Ipv4Addr::new(10, 100, 0, 1))?;
-//! // Enable the TUN device to begin receiving packets
-//! tun.set_up()?;
+//! tun.set_up()?; // Enables the TUN device to exchange packets
 //!
 //! let mut recv_buf = [0; 65536];
 //!
 //! loop {
-//!     // Receive a single network-layer packet from the TUN device
 //!     let amount = tun.recv(&mut recv_buf)?;
 //!     println!("Received packet: {:?}", &recv_buf[0..amount]);
 //! }

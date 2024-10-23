@@ -12,7 +12,6 @@
 //!
 //!
 
-use std::ptr::NonNull;
 use std::time::Duration;
 use std::{cmp, io, ptr, thread};
 
@@ -27,7 +26,7 @@ use super::TunAdapter;
 /// Each Session has its own unique ring for sending and receiving packets.
 pub struct TunSession<'a> {
     adapter: &'a TunAdapter,
-    session: NonNull<WintunSession>,
+    session: *mut WintunSession,
     nonblocking: bool,
 }
 
@@ -46,7 +45,7 @@ impl<'a> TunSession<'a> {
     const SEND_MAX_BLOCKING_INTERVAL: u64 = 100;
 
     /// Creates a new `TunSession`.
-    pub(crate) fn new(adapter: &'a TunAdapter, session: NonNull<WintunSession>) -> Self {
+    pub(crate) fn new(adapter: &'a TunAdapter, session: *mut WintunSession) -> Self {
         Self {
             adapter,
             session,
@@ -56,14 +55,13 @@ impl<'a> TunSession<'a> {
 
     /// Returns a `HANDLE` that can be used to poll for incoming packets.
     #[inline]
-    pub fn read_handle(&mut self) -> HANDLE {
-        Self::read_handle_impl(&self.adapter, &mut self.session)
+    pub fn read_handle(&self) -> HANDLE {
+        Self::read_handle_impl(&self.adapter, self.session)
     }
 
-    pub fn read_handle_impl(adapter: &TunAdapter, session: &mut NonNull<WintunSession>) -> HANDLE {
-        adapter
-            .wintun
-            .read_event_handle(unsafe { session.as_mut() })
+    pub(crate) fn read_handle_impl(adapter: &TunAdapter, session: *mut WintunSession) -> HANDLE {
+        // SAFETY: read_event_handle is thread-safe and does not actually mutate the `WintunSession`
+        adapter.wintun.read_event_handle(session)
     }
 
     /// Sends a packet out on the TUN interface.
@@ -74,13 +72,19 @@ impl<'a> TunSession<'a> {
     /// releases, received packets that are equal to the length of `buf` should be treated as if
     /// they have been truncated.
     #[inline]
-    pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
-        Self::send_impl(&self.adapter, &mut self.session, self.nonblocking, buf)
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        // SAFETY:
+        // Immutable `self` passes through a `*mut WintunSession` that is subsequently used.
+        // To ensure this isn't UB, we need to:
+        // 1. Ensure any use of this mutable pointer is thread-safe
+        // 2. Watch out for mutation to the WintunSession while another reference is relying on its
+        // state (e.g. iterator invalidation).
+        Self::send_impl(&self.adapter, self.session, self.nonblocking, buf)
     }
 
     pub(crate) fn send_impl(
         adapter: &TunAdapter,
-        session: &mut NonNull<WintunSession>,
+        session: *mut WintunSession,
         nonblocking: bool,
         buf: &[u8],
     ) -> io::Result<usize> {
@@ -88,9 +92,8 @@ impl<'a> TunSession<'a> {
 
         let mut timeout = 1; // 1 millisecond timeout initially
         let pkt = loop {
-            let pkt_res = adapter
-                .wintun
-                .allocate_packet(unsafe { session.as_mut() }, packet_size as u32);
+            // SAFETY: allocate_packet is thread-safe
+            let pkt_res = adapter.wintun.allocate_packet(session, packet_size as u32);
             if nonblocking {
                 break pkt_res.map_err(|_| io::Error::from(io::ErrorKind::WouldBlock))?;
             } else {
@@ -106,7 +109,8 @@ impl<'a> TunSession<'a> {
 
         unsafe { ptr::copy_nonoverlapping(buf.as_ptr(), pkt.as_ptr(), packet_size) };
 
-        adapter.wintun.send_packet(unsafe { session.as_mut() }, pkt);
+        // SAFETY: send_packet is thread-safe
+        adapter.wintun.send_packet(session, pkt);
 
         Ok(packet_size)
     }
@@ -119,36 +123,35 @@ impl<'a> TunSession<'a> {
     /// releases, received packets that are equal to the length of `buf` should always be treated
     /// as if they have been truncated.
     #[inline]
-    pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        Self::recv_impl(&self.adapter, &mut self.session, self.nonblocking, buf)
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        // SAFETY:
+        // Immutable `self` passes through a `*mut WintunSession` that is subsequently used.
+        // To ensure this isn't UB, we need to:
+        // 1. Ensure any use of this mutable pointer is thread-safe
+        // 2. Watch out for mutation to the WintunSession while another reference is relying on its
+        // state (e.g. iterator invalidation).
+        Self::recv_impl(&self.adapter, self.session, self.nonblocking, buf)
     }
 
     pub(crate) fn recv_impl(
         adapter: &TunAdapter,
-        session: &mut NonNull<WintunSession>,
+        session: *mut WintunSession,
         nonblocking: bool,
         buf: &mut [u8],
     ) -> io::Result<usize> {
         let mut packet_size = 0u32;
 
-        let recv_pkt = match adapter
-            .wintun
-            .recv_packet(unsafe { session.as_mut() }, &mut packet_size)
-        {
+        // SAFETY: recv_packet is thread-safe
+        let recv_pkt = match adapter.wintun.recv_packet(session, &mut packet_size) {
             Ok(pkt) => pkt,
             Err(e) if e.raw_os_error() == Some(ERROR_NO_MORE_ITEMS as i32) => loop {
                 if nonblocking {
                     return Err(io::ErrorKind::WouldBlock.into());
                 }
 
-                let read_handle = adapter
-                    .wintun
-                    .read_event_handle(unsafe { session.as_mut() });
+                let read_handle = adapter.wintun.read_event_handle(session);
                 unsafe { WaitForSingleObject(read_handle, INFINITE) };
-                if let Ok(pkt) = adapter
-                    .wintun
-                    .recv_packet(unsafe { session.as_mut() }, &mut packet_size)
-                {
+                if let Ok(pkt) = adapter.wintun.recv_packet(session, &mut packet_size) {
                     break pkt;
                 }
             },
@@ -160,9 +163,8 @@ impl<'a> TunSession<'a> {
             ptr::copy_nonoverlapping(recv_pkt.as_ptr(), buf.as_mut_ptr(), output_size);
         }
 
-        adapter
-            .wintun
-            .free_packet(unsafe { session.as_mut() }, recv_pkt);
+        // SAFETY: free_packet is thread-safe
+        adapter.wintun.free_packet(session, recv_pkt);
 
         Ok(output_size)
     }
@@ -200,7 +202,7 @@ impl<'a> TunSession<'a> {
 impl Drop for TunSession<'_> {
     fn drop(&mut self) {
         unsafe {
-            self.adapter.wintun.end_session(self.session.as_ptr());
+            self.adapter.wintun.end_session(self.session);
         }
     }
 }

@@ -119,13 +119,13 @@ impl Tap {
 
     /// Sends a packet out over the TAP device.
     #[inline]
-    pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         self.inner.send(buf)
     }
 
     /// Receives a packet over the TAP device.
     #[inline]
-    pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.recv(buf)
     }
 }

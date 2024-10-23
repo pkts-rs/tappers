@@ -934,7 +934,7 @@ impl FethTap {
 
     /// Sends a single packet out over the TAP interface.
     #[inline]
-    pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         unsafe {
             match libc::write(self.ndrv_fd, buf.as_ptr() as *mut libc::c_void, buf.len()) {
                 s @ 0.. => Ok(s as usize),
@@ -945,7 +945,7 @@ impl FethTap {
 
     /// Receives a packet over the TAP device.
     #[inline]
-    pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         unsafe {
             match libc::read(
                 self.ndrv_fd,

@@ -9,6 +9,8 @@
 // except according to those terms.
 
 use std::io;
+
+#[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
 
 #[cfg(not(target_os = "windows"))]
@@ -154,13 +156,13 @@ impl Tun {
 
     /// Sends a packet over the TUN device.
     #[inline]
-    pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         self.inner.send(buf)
     }
 
     /// Receives a packet over the TUN device.
     #[inline]
-    pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.recv(buf)
     }
 

@@ -317,20 +317,20 @@ impl Wintun {
         (self.api.WintunEndSession)(session)
     }
 
-    pub fn read_event_handle(&self, session: &mut WintunSession) -> HANDLE {
+    pub fn read_event_handle(&self, session: *mut WintunSession) -> HANDLE {
         unsafe { (self.api.WintunGetReadWaitEvent)(session) }
     }
 
     pub fn recv_packet(
         &self,
-        session: &mut WintunSession,
+        session: *mut WintunSession,
         packet_size: &mut u32,
     ) -> io::Result<WintunPacket> {
         let pkt = unsafe { (self.api.WintunReceivePacket)(session, packet_size) };
         NonNull::new(pkt).ok_or(io::Error::last_os_error())
     }
 
-    pub fn free_packet(&self, session: &mut WintunSession, packet: WintunPacket) {
+    pub fn free_packet(&self, session: *mut WintunSession, packet: WintunPacket) {
         unsafe {
             (self.api.WintunReleaseReceivePacket)(session, packet.as_ptr());
         }
@@ -338,14 +338,14 @@ impl Wintun {
 
     pub fn allocate_packet(
         &self,
-        session: &mut WintunSession,
+        session: *mut WintunSession,
         packet_size: u32,
     ) -> io::Result<WintunPacket> {
         let pkt = unsafe { (self.api.WintunAllocateSendPacket)(session, packet_size) };
         NonNull::new(pkt).ok_or(io::Error::last_os_error())
     }
 
-    pub fn send_packet(&self, session: &mut WintunSession, packet: WintunPacket) {
+    pub fn send_packet(&self, session: *mut WintunSession, packet: WintunPacket) {
         unsafe { (self.api.WintunSendPacket)(session, packet.as_ptr()) }
     }
 }

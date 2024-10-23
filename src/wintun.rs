@@ -155,18 +155,18 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
-        TunSession::send_impl(&self.adapter, &mut self.session, self.nonblocking, buf)
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        TunSession::send_impl(&self.adapter, self.session.as_ptr(), self.nonblocking, buf)
     }
 
     #[inline]
-    pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        TunSession::recv_impl(&self.adapter, &mut self.session, self.nonblocking, buf)
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        TunSession::recv_impl(&self.adapter, self.session.as_ptr(), self.nonblocking, buf)
     }
 
     #[inline]
     pub fn read_handle(&mut self) -> HANDLE {
-        TunSession::read_handle_impl(&self.adapter, &mut self.session)
+        TunSession::read_handle_impl(&self.adapter, self.session.as_ptr())
     }
 }
 

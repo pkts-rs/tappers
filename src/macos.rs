@@ -81,12 +81,12 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         self.tun.send(buf)
     }
 
     #[inline]
-    pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.tun.recv(buf)
     }
 }
@@ -151,12 +151,12 @@ impl TapImpl {
     }
 
     #[inline]
-    pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         self.tap.send(buf)
     }
 
     #[inline]
-    pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.tap.recv(buf)
     }
 }

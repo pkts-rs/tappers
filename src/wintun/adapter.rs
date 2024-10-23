@@ -232,7 +232,7 @@ impl TunAdapter {
         let session = self
             .wintun
             .start_session(unsafe { self.adapter.as_mut() }, ring_size)?;
-        Ok(TunSession::new(self, session))
+        Ok(TunSession::new(self, session.as_ptr()))
     }
 
     // TODO: is start_sessions() allowed?
@@ -258,7 +258,7 @@ impl TunAdapter {
         }
 
         for session in session_ptrs {
-            sessions.push(TunSession::new(self, session));
+            sessions.push(TunSession::new(self, session.as_ptr()));
         }
 
         Ok(sessions)

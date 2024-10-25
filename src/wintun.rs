@@ -24,8 +24,10 @@ pub use session::TunSession;
 use std::io;
 use std::ptr::NonNull;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::raw::HANDLE;
+
 use dll::WintunSession;
-use windows_sys::Win32::Foundation::HANDLE;
 
 use crate::{DeviceState, Interface};
 

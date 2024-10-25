@@ -12,11 +12,12 @@
 
 #![allow(non_snake_case)]
 
+use std::os::windows::raw::HANDLE;
 use std::ptr::NonNull;
 use std::{io, mem, ptr};
 
 use windows_sys::core::{GUID, PCWSTR};
-use windows_sys::Win32::Foundation::{BOOL, HANDLE};
+use windows_sys::Win32::Foundation::BOOL;
 use windows_sys::Win32::NetworkManagement::Ndis::NET_LUID_LH;
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 

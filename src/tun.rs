@@ -34,7 +34,7 @@ use crate::unix::TunImpl;
 use crate::wintun::TunImpl;
 
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Foundation::HANDLE;
+use std::os::windows::raw::HANDLE;
 
 #[cfg(not(target_os = "windows"))]
 use crate::AddressInfo;

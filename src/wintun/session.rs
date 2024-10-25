@@ -12,10 +12,12 @@
 //!
 //!
 
+#[cfg(target_os = "windows")]
+use std::os::windows::raw::HANDLE;
 use std::time::Duration;
 use std::{cmp, io, ptr, thread};
 
-use windows_sys::Win32::Foundation::{ERROR_NO_MORE_ITEMS, HANDLE};
+use windows_sys::Win32::Foundation::ERROR_NO_MORE_ITEMS;
 use windows_sys::Win32::System::Threading::{WaitForSingleObject, INFINITE};
 
 use super::dll::WintunSession;

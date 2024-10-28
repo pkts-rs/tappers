@@ -28,6 +28,7 @@ use mio::{Interest, Registry, Token};
 /// A cross-platform asynchronous TAP interface, suitable for tunnelling link-layer packets.
 pub struct AsyncTap {
     tap: Tap,
+    /// SAFETY: file descriptor/handle is closed when `tap` goes out of scope, so this doesn't need to.
     io: ManuallyDrop<UdpSocket>,
 }
 

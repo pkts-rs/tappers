@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#[cfg(target_os = "windows")]
+use std::cmp;
 use std::io;
 #[cfg(target_os = "windows")]
 use std::mem::ManuallyDrop;
@@ -29,12 +31,30 @@ use tokio::io::Interest;
 #[cfg(target_os = "windows")]
 use tokio::net::UdpSocket;
 
+/// A convenience type used to make internal operations consistent between Windows and Unix.
+#[cfg(target_os = "windows")]
+struct TunWrapper(Tun);
+
+#[cfg(target_os = "windows")]
+impl TunWrapper {
+    /// Returns a reference to the underlying `Tun` function.
+    pub fn get_ref(&self) -> &Tun {
+        &self.0
+    }
+
+    /// Returns a reference to the underlying `Tap` function.
+    pub fn get_mut(&mut self) -> &mut Tun {
+        &mut self.0
+    }
+}
+
 /// A cross-platform asynchronous TUN interface, suitable for tunnelling network-layer packets.
 pub struct AsyncTun {
     #[cfg(not(target_os = "windows"))]
     tun: AsyncFd<Tun>,
     #[cfg(target_os = "windows")]
-    tun: Tun,
+    tun: TunWrapper,
+    /// SAFETY: file descriptor/handle is closed when `tun` goes out of scope, so this doesn't need to.
     #[cfg(target_os = "windows")]
     io: ManuallyDrop<UdpSocket>,
 }
@@ -46,21 +66,6 @@ impl AsyncTun {
         Self::new_impl()
     }
 
-    #[cfg(target_os = "windows")]
-    fn new_impl() -> io::Result<Self> {
-        let mut tun = Tun::new()?;
-        tun.set_nonblocking(true)?;
-
-        // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
-        // implementation so that the descriptor isn't closed twice.
-        let io = unsafe { UdpSocket::from_raw_socket(tun.read_handle() as RawSocket) };
-
-        Ok(Self {
-            tun,
-            io: ManuallyDrop::new(io),
-        })
-    }
-
     #[cfg(not(target_os = "windows"))]
     fn new_impl() -> io::Result<Self> {
         let mut tun = Tun::new()?;
@@ -68,6 +73,25 @@ impl AsyncTun {
 
         Ok(Self {
             tun: AsyncFd::new(tun)?,
+        })
+    }
+
+    #[cfg(target_os = "windows")]
+    fn new_impl() -> io::Result<Self> {
+        let mut tun = Tun::new()?;
+        tun.set_nonblocking(true)?;
+
+        // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
+        // implementation so that the descriptor isn't closed twice.
+        let io = unsafe {
+            UdpSocket::from_std(std::net::UdpSocket::from_raw_socket(
+                tun.read_handle() as RawSocket
+            ))?
+        };
+
+        Ok(Self {
+            tun: TunWrapper(tun),
+            io: ManuallyDrop::new(io),
         })
     }
 
@@ -95,10 +119,14 @@ impl AsyncTun {
         // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
         // implementation so that the descriptor isn't closed twice.
         #[cfg(target_os = "windows")]
-        let io = unsafe { UdpSocket::from_raw_socket(tun.read_handle() as RawSocket) };
+        let io = unsafe {
+            UdpSocket::from_std(std::net::UdpSocket::from_raw_socket(
+                tun.read_handle() as RawSocket
+            ))?
+        };
 
         Ok(Self {
-            tun,
+            tun: TunWrapper(tun),
             io: ManuallyDrop::new(io),
         })
     }
@@ -189,7 +217,7 @@ impl AsyncTun {
         let mut timeout = 1; // Start with 1 millisecond timeout
 
         loop {
-            match self.tun.send(buf) {
+            match self.tun.get_ref().send(buf) {
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     tokio::time::sleep(Duration::from_millis(timeout)).await;
                     timeout = cmp::min(timeout * 2, SEND_MAX_BLOCKING_INTERVAL);
@@ -208,7 +236,7 @@ impl AsyncTun {
     #[cfg(not(target_os = "windows"))]
     pub async fn recv_impl(&self, buf: &mut [u8]) -> io::Result<usize> {
         loop {
-            let mut guard = self.tun.writable().await?;
+            let mut guard = self.tun.readable().await?;
 
             match guard.try_io(|inner| inner.get_ref().recv(buf)) {
                 Ok(result) => return result,
@@ -220,24 +248,15 @@ impl AsyncTun {
     #[cfg(target_os = "windows")]
     pub async fn recv_impl(&self, buf: &mut [u8]) -> io::Result<usize> {
         loop {
-            let mut guard = self.io.readable().await?;
+            self.io.readable().await?;
 
-            match guard.try_io(Interest::READABLE, |inner| self.tun.recv(buf)) {
-                Ok(result) => return result,
-                Err(_would_block) => continue,
+            match self
+                .io
+                .try_io(Interest::READABLE, || self.tun.get_ref().recv(buf))
+            {
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                res => return res,
             }
-        }
-    }
-}
-
-impl Drop for AsyncTun {
-    fn drop(&mut self) {
-        #[cfg(target_os = "windows")]
-        {
-            // This ensures that `UdpSocket` is dropped properly while not double-closing the RawFd.
-            // SAFETY: `self.io` won't be accessed after this thanks to ManuallyDrop
-            let io = unsafe { ManuallyDrop::take(&mut self.io) };
-            io.into_raw_fd();
         }
     }
 }

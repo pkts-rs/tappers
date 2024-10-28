@@ -167,10 +167,15 @@ impl Tun {
         self.inner.recv(buf)
     }
 
-    /// The HANDLE
+    /// The HANDLE used to poll for incoming packet events in Windows.
+    ///
+    /// # Safety
+    ///
+    /// The returned handle must only be used in thread-safe contexts, and should not be used after
+    /// the `Tun` device is dropped.
     #[cfg(target_os = "windows")]
     #[inline]
-    pub fn read_handle(&mut self) -> HANDLE {
+    pub unsafe fn read_handle(&self) -> HANDLE {
         self.inner.read_handle()
     }
 }

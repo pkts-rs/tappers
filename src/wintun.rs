@@ -165,7 +165,7 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn read_handle(&mut self) -> HANDLE {
+    pub fn read_handle(&self) -> HANDLE {
         TunSession::read_handle_impl(&self.adapter, self.session.as_ptr())
     }
 }

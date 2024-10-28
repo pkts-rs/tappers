@@ -133,7 +133,7 @@
 // Show required OS/features on docs.rs.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(any(doc, all(feature = "async-io", not(target_os = "windows"))))]
+#[cfg(any(doc, feature = "async-io"))]
 pub mod async_io;
 #[cfg(any(doc, target_os = "linux"))]
 pub mod linux;
@@ -141,7 +141,7 @@ pub mod linux;
 pub mod macos;
 #[cfg(any(doc, all(feature = "mio", not(target_os = "windows"))))]
 pub mod mio;
-#[cfg(any(doc, all(feature = "tokio", not(target_os = "windows"))))]
+#[cfg(any(doc, feature = "tokio"))]
 pub mod tokio;
 #[cfg(any(
     doc,
@@ -220,6 +220,7 @@ use rtnetlink::{
 ))]
 use sysctl::*;
 
+#[cfg(target_os = "linux")]
 const NETLINK_MAX_RECV: usize = 65536;
 
 pub type Netmask = u8;
@@ -336,32 +337,36 @@ pub enum AddAddress {
 }
 
 impl AddAddress {
+    /// The IP address associated with the interface.
     #[inline]
-    fn addr(&self) -> IpAddr {
+    pub fn addr(&self) -> IpAddr {
         match self {
             Self::V4(a) => a.addr.into(),
             Self::V6(a) => a.addr.into(),
         }
     }
 
+    /// The broadcast address associated with the interface.
     #[inline]
-    fn brd(&self) -> Option<IpAddr> {
+    pub fn brd(&self) -> Option<IpAddr> {
         match self {
             Self::V4(a) => Some(a.brd?.into()),
             Self::V6(a) => Some(a.brd?.into()),
         }
     }
 
+    /// The point-to-point destination address associated with the interface.
     #[inline]
-    fn dst(&self) -> Option<IpAddr> {
+    pub fn dst(&self) -> Option<IpAddr> {
         match self {
             Self::V4(a) => Some(a.dst?.into()),
             Self::V6(a) => Some(a.dst?.into()),
         }
     }
 
+    /// The netmask associated with the interface.
     #[inline]
-    fn netmask(&self) -> Option<Netmask> {
+    pub fn netmask(&self) -> Option<Netmask> {
         match self {
             Self::V4(a) => a.netmask,
             Self::V6(a) => a.netmask,
@@ -1669,7 +1674,7 @@ impl Interface {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     #[inline]
     fn close_fd(fd: RawFd) {
         unsafe {

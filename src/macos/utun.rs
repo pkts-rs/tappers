@@ -41,15 +41,6 @@ pub struct iovec_const {
     pub iov_len: libc::size_t,
 }
 
-// MacOS `route` utility uses this buffer size
-#[cfg(not(doc))]
-#[repr(C)]
-#[allow(non_camel_case_types)]
-struct rtmsg {
-    m_rtm: libc::rt_msghdr,
-    m_space: [u8; 512],
-}
-
 pub struct Utun {
     fd: RawFd,
 }

@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#[cfg(target_os = "windows")]
+use std::cmp;
 use std::io;
 #[cfg(target_os = "windows")]
 use std::mem::ManuallyDrop;
@@ -85,6 +87,7 @@ impl AsSocket for TapWrapper {
 
 /// A cross-platform asynchronous TAP interface, suitable for tunnelling link-layer packets.
 pub struct AsyncTap {
+    #[cfg(not(target_os = "windows"))]
     tap: Async<Tap>,
     #[cfg(target_os = "windows")]
     tap: Async<TapWrapper>,
@@ -246,17 +249,5 @@ impl AsyncTap {
     #[cfg(target_os = "windows")]
     pub async fn recv_impl(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.tap.read_with(|inner| inner.0.recv(buf)).await
-    }
-}
-
-impl Drop for AsyncTap {
-    fn drop(&mut self) {
-        #[cfg(target_os = "windows")]
-        {
-            // This ensures that `UdpSocket` is dropped properly while not double-closing the RawFd.
-            // SAFETY: `self.io` won't be accessed after this thanks to ManuallyDrop
-            let io = unsafe { ManuallyDrop::take(&mut self.io) };
-            io.into_raw_fd();
-        }
     }
 }

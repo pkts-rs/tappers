@@ -10,6 +10,8 @@
 
 use std::ffi::CStr;
 use std::net::IpAddr;
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 use std::{io, ptr};
 
 use crate::RawFd;
@@ -397,6 +399,20 @@ impl Tun {
         unsafe {
             debug_assert_eq!(libc::close(fd), 0);
         }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsFd for Tun {
+    fn as_fd(&self) -> BorrowedFd {
+        unsafe { BorrowedFd::borrow_raw(self.fd) }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsRawFd for Tun {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
     }
 }
 

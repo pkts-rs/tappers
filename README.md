@@ -131,7 +131,7 @@ tap.set_state(DeviceState::Down);
 | TUN/TAP support for *BSD                    | ✅        | ⬜             | FreeBSD/TUN only | ⬜         | OpenBSD   | ⬜          |
 | TUN/TAP support for Solaris/IllumOS         | ⬜        | ⬜             | ⬜               | ⬜         | ⬜        | ⬜          |
 | non-`async` support                         | ✅        | ✅             | ✅               | ✅         | ✅        | ⬜          |
-| `async` support                             | Planned   | ✅             | Unix only        | ✅         | ⬜        | ✅          |
+| `async` support                             | ✅        | ✅             | Unix only        | ✅         | ⬜        | ✅          |
 
 `*` - `tappers` doesn't currently support setting or deleting IP addresses in Windows. This because
 Windows fundamentally lacks support for adding or changing IPv6 interface addresses in current APIs.
@@ -222,15 +222,14 @@ All `Tun` and `Tap` types implement synchronous blocking/nonblocking `send()` an
 In addition to this, `tappers` will aim to provide first-class support for the following `async`
 runtimes:
 
-| `async` Runtime | Supported?    |
-| --------------- | ------------- |
-| `mio`           | ⬜            |
-| `tokio`         | ⬜            |
-| `futures`       | ⬜            |
-| `async-std`     | Via `futures` |
-| `smol`          | Via `futures` |
+| `async` Runtime | Supported?          |
+| --------------- | ------------------- |
+| `mio`           | ✅*                 |
+| `tokio`         | ✅                  |
+| `async-std`     | ✅ (via `async-io`) |
+| `smol`          | ✅ (via `async-io`) |
 
-Note that this library is currently a work in progress--`async` runtimes will soon be supported.
+`*` - on all platforms except for Windows
 
 ## Dependency Policy
 

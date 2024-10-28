@@ -10,7 +10,7 @@
 
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 use std::{array, io, mem, ptr, str};
 
 use crate::libc_extra::*;
@@ -428,9 +428,10 @@ impl Utun {
     }
 }
 
-impl Drop for Utun {
-    fn drop(&mut self) {
-        self.destroy_impl().unwrap();
+#[cfg(not(target_os = "windows"))]
+impl AsFd for Utun {
+    fn as_fd(&self) -> BorrowedFd {
+        unsafe { BorrowedFd::borrow_raw(self.fd) }
     }
 }
 
@@ -438,5 +439,11 @@ impl Drop for Utun {
 impl AsRawFd for Utun {
     fn as_raw_fd(&self) -> RawFd {
         self.fd
+    }
+}
+
+impl Drop for Utun {
+    fn drop(&mut self) {
+        self.destroy_impl().unwrap();
     }
 }

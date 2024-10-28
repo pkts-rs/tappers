@@ -1,5 +1,10 @@
 # Release History:
 
+* 0.4.0
+  - Change `send()`, `recv()` functions to be immutable
+  - Add async implementations for `async-std`, `mio`, `smol`, `tokio`
+  - Move Rust MSRV up to 1.70 (to support `mio`)
+
 * 0.3.1
   - Make docs show platform-specific APIS
   - Update documentation

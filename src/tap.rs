@@ -8,7 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::{io, net::IpAddr};
+use std::io;
+use std::net::IpAddr;
+
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 
 #[cfg(not(target_os = "windows"))]
 use crate::AddAddress;
@@ -127,6 +131,20 @@ impl Tap {
     #[inline]
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.recv(buf)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsRawFd for Tap {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsFd for Tap {
+    fn as_fd(&self) -> BorrowedFd {
+        self.inner.as_fd()
     }
 }
 

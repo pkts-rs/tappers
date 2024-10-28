@@ -856,14 +856,14 @@ pub const IF_FAKE_MEDIA_LIST_MAX: usize = 27;
 
 #[cfg(target_os = "macos")]
 pub const SIOCIFCREATE: libc::c_ulong = _IOWR::<ifreq>(b'i', 120);
-#[cfg(target_os = "macos")]
-pub const SIOCIFCREATE2: libc::c_ulong = _IOWR::<ifreq>(b'i', 122);
+//#[cfg(target_os = "macos")]
+//pub const SIOCIFCREATE2: libc::c_ulong = _IOWR::<ifreq>(b'i', 122);
 #[cfg(any(target_os = "openbsd", target_os = "netbsd"))]
 pub const SIOCIFCREATE: libc::c_ulong = _IOW::<ifreq>(b'i', 122);
 #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
 pub const SIOCIFCREATE2: libc::c_ulong = _IOWR::<ifreq>(b'i', 124);
-#[cfg(target_os = "macos")]
-pub const SIOCGDRVSPEC: libc::c_ulong = _IOWR::<ifdrv>(b'i', 123);
+//#[cfg(target_os = "macos")]
+//pub const SIOCGDRVSPEC: libc::c_ulong = _IOWR::<ifdrv>(b'i', 123);
 #[cfg(target_os = "macos")]
 pub const SIOCSDRVSPEC: libc::c_ulong = _IOW::<ifdrv>(b'i', 123);
 #[cfg(any(

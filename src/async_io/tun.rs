@@ -8,9 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::io;
 #[cfg(target_os = "windows")]
-use std::mem::ManuallyDrop;
+use std::cmp;
+use std::io;
 #[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
 #[cfg(target_os = "windows")]
@@ -78,12 +78,13 @@ impl TunWrapper {
 #[cfg(target_os = "windows")]
 impl AsSocket for TunWrapper {
     fn as_socket(&self) -> BorrowedSocket<'_> {
-        unsafe { BorrowedSocket::borrow_raw(self.inner.read_handle() as RawSocket) }
+        unsafe { BorrowedSocket::borrow_raw(self.0.read_handle() as RawSocket) }
     }
 }
 
 /// A cross-platform asynchronous TUN interface, suitable for tunnelling network-layer packets.
 pub struct AsyncTun {
+    #[cfg(not(target_os = "windows"))]
     tun: Async<Tun>,
     #[cfg(target_os = "windows")]
     tun: Async<TunWrapper>,
@@ -102,7 +103,7 @@ impl AsyncTun {
         tun.set_nonblocking(true)?;
 
         Ok(Self {
-            tun: Async::new(TunWrapper(tun)),
+            tun: Async::new(TunWrapper(tun))?,
         })
     }
 
@@ -245,17 +246,5 @@ impl AsyncTun {
     #[cfg(target_os = "windows")]
     pub async fn recv_impl(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.tun.read_with(|inner| inner.0.recv(buf)).await
-    }
-}
-
-impl Drop for AsyncTun {
-    fn drop(&mut self) {
-        #[cfg(target_os = "windows")]
-        {
-            // This ensures that `UdpSocket` is dropped properly while not double-closing the RawFd.
-            // SAFETY: `self.io` won't be accessed after this thanks to ManuallyDrop
-            let io = unsafe { ManuallyDrop::take(&mut self.io) };
-            io.into_raw_fd();
-        }
     }
 }

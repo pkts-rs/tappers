@@ -29,7 +29,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.66.0
+          - 1.70.0
     steps:
       - uses: actions/checkout@v4
       - name: Setup Rust toolchain
@@ -47,7 +47,7 @@ jobs:
       matrix:
         target:
           - { toolchain: stable, os: macos-14 }
-          - { toolchain: 1.66.0, os: macos-14 }
+          - { toolchain: 1.70.0, os: macos-14 }
     runs-on: ${{ matrix.target.os }}
     steps:
       - uses: actions/checkout@v4
@@ -66,7 +66,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.66.0
+          - 1.70.0
         target:
           - x86_64-pc-windows-msvc
     steps:
@@ -142,7 +142,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.66.0
+          - 1.70.0
     steps:
     - uses: actions/checkout@v4
     - name: Test in FreeBSD
@@ -171,7 +171,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.66.0
+          - 1.70.0
     steps:
     - uses: actions/checkout@v4
     - name: Test in NetBSD
@@ -211,7 +211,7 @@ jobs:
 #      matrix:
 #        toolchain:
 #          - stable
-#          - 1.66.0
+#          - 1.70.0
 #    steps:
 #    - uses: actions/checkout@v4
 #    - name: Test in OpenBSD

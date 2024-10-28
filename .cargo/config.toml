@@ -1,8 +1,11 @@
+# Needed to avoid race conditions when testing TUN/TAP interfaces on machine
+[env]
+RUST_TEST_THREADS = "1"
+
+# TUN/TAP interfaces require admin privileges to test
 [target.'cfg(unix)']
 runner = 'sudo -E'
 
+# TUN/TAP interfaces require admin privileges to test
 [target.'cfg(windows)']
 runner = "powershell -Command Start-Process -Verb runAs -FilePath"
-
-[env]
-RUST_TEST_THREADS = "1"

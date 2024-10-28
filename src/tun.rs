@@ -9,9 +9,10 @@
 // except according to those terms.
 
 use std::io;
-
 #[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 
 #[cfg(not(target_os = "windows"))]
 use crate::AddAddress;
@@ -171,6 +172,20 @@ impl Tun {
     #[inline]
     pub fn read_handle(&mut self) -> HANDLE {
         self.inner.read_handle()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsRawFd for Tun {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsFd for Tun {
+    fn as_fd(&self) -> BorrowedFd {
+        self.inner.as_fd()
     }
 }
 

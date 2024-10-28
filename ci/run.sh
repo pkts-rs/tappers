@@ -37,17 +37,35 @@ esac
 
 case "${OS}" in
     windows*)
-        cargo test --features wintun
+        cargo test --all-targets
 
-        cargo test --features wintun-runtime
+        cargo test --all-targets --features wintun
 
-        cargo test --features tapwin6
+        cargo test --all-targets --features wintun-runtime
 
-        cargo test --features tapwin6-runtime
+        cargo test --all-targets --features tapwin6
+
+        cargo test --all-targets --features tapwin6-runtime
+
+        cargo test --all-targets --all-features
+
+        # doc tests must have all features enabled to run
+        cargo test --doc --all-features
         ;;
     *)
         # No extra features in any platform other than windows
 
-        cargo test
+        cargo test --all-targets
+
+        cargo test --all-targets --features async-io
+
+        cargo test --all-targets --features mio
+
+        cargo test --all-targets --features tokio
+
+        cargo test --all-targets --all-features
+
+        # doc tests must have all features enabled to run
+        cargo test --doc --all-features
         ;;
 esac

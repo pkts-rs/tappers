@@ -17,12 +17,12 @@ mod adapter;
 mod dll;
 mod session;
 
+use std::io;
+use std::ptr::NonNull;
+
 pub use adapter::TunAdapter;
 pub use dll::WintunLoggerCallback;
 pub use session::TunSession;
-
-use std::io;
-use std::ptr::NonNull;
 
 use dll::WintunSession;
 use windows_sys::Win32::Foundation::HANDLE;

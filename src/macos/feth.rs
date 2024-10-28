@@ -10,6 +10,8 @@
 
 use std::ffi::{CStr, CString};
 use std::net::IpAddr;
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 use std::{array, cmp, io, mem, ptr};
 
 use crate::libc_extra::*;
@@ -1015,6 +1017,20 @@ impl FethTap {
         unsafe {
             debug_assert_eq!(libc::close(fd), 0);
         }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsFd for FethTap {
+    fn as_fd(&self) -> BorrowedFd {
+        unsafe { BorrowedFd::borrow_raw(self.bpf_fd) }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsRawFd for FethTap {
+    fn as_raw_fd(&self) -> RawFd {
+        self.bpf_fd
     }
 }
 

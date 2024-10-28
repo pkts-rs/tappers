@@ -9,8 +9,7 @@
 // except according to those terms.
 
 //! Linux-specific TUN/TAP interfaces.
-
-// Values that have yet to be included in libc:
+//!
 
 mod tap;
 mod tun;
@@ -18,6 +17,8 @@ mod tun;
 pub use tap::Tap;
 pub use tun::Tun;
 
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 use std::{io, net::IpAddr};
 
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
@@ -101,6 +102,20 @@ impl TunImpl {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
+impl AsFd for TunImpl {
+    fn as_fd(&self) -> BorrowedFd {
+        self.tun.as_fd()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsRawFd for TunImpl {
+    fn as_raw_fd(&self) -> RawFd {
+        self.tun.as_raw_fd()
+    }
+}
+
 pub(crate) struct TapImpl {
     tap: Tap,
 }
@@ -166,5 +181,19 @@ impl TapImpl {
     #[inline]
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.tap.recv(buf)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsFd for TapImpl {
+    fn as_fd(&self) -> BorrowedFd {
+        self.tap.as_fd()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsRawFd for TapImpl {
+    fn as_raw_fd(&self) -> RawFd {
+        self.tap.as_raw_fd()
     }
 }

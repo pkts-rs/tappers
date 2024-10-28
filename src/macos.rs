@@ -20,6 +20,8 @@ pub use feth::FethTap;
 pub use utun::Utun;
 
 use std::net::IpAddr;
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
@@ -91,6 +93,20 @@ impl TunImpl {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
+impl AsFd for TunImpl {
+    fn as_fd(&self) -> BorrowedFd {
+        self.tun.as_fd()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsRawFd for TunImpl {
+    fn as_raw_fd(&self) -> RawFd {
+        self.tun.as_raw_fd()
+    }
+}
+
 pub(crate) struct TapImpl {
     tap: FethTap,
 }
@@ -158,5 +174,19 @@ impl TapImpl {
     #[inline]
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.tap.recv(buf)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsFd for TapImpl {
+    fn as_fd(&self) -> BorrowedFd {
+        self.tap.as_fd()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl AsRawFd for TapImpl {
+    fn as_raw_fd(&self) -> RawFd {
+        self.tap.as_raw_fd()
     }
 }

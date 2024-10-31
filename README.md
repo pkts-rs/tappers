@@ -1,6 +1,6 @@
 # Tappers
 
-[![Cross-Platform]][CI Status] [![Latest Version]][crates.io] [![Documentation]][docs.rs] [![v1.66+]][Rust 1.66]
+[![Cross-Platform]][CI Status] [![Latest Version]][crates.io] [![Documentation]][docs.rs] [![v1.70+]][Rust 1.70]
 
 [Cross-Platform]: https://github.com/pkts-rs/tappers/actions/workflows/full_ci.yml/badge.svg
 [CI Status]: https://github.com/pkts-rs/tappers/actions
@@ -8,8 +8,8 @@
 [docs.rs]: https://docs.rs/tappers/
 [Latest Version]: https://img.shields.io/crates/v/tappers.svg
 [crates.io]: https://crates.io/crates/tappers
-[v1.66+]: https://img.shields.io/badge/MSRV-rustc_1.66+-blue.svg
-[Rust 1.66]: https://blog.rust-lang.org/2022/12/15/Rust-1.66.0.html
+[v1.70+]: https://img.shields.io/badge/MSRV-rustc_1.70+-blue.svg
+[Rust 1.70]: https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html
 
 ---
 
@@ -234,13 +234,20 @@ runtimes:
 ## Dependency Policy
 
 Like other crates managed by pkts.org, `tappers` aims to rely on a minimal set of dependencies
-that are vetted and well-used in the Rust ecosystem. As such, `tappers` makes use of only the
-following dependencies:
+that are vetted and well-used in the Rust ecosystem. As such, `tappers` has only the following
+dependencies:
 
 * `libc`, `windows-sys` - Provides needed types and functions for creating/managing TUN/TAP
 interfaces across various platforms.
-* `once_cell` - Used in Windows implementation of `Tun`/`Tap`. Will be replaced with standard
+* `once_cell` - Used in Windows implementation of `Tun`/`Tap`. Will be replaced with the standard
 library once certain OnceCell APIs are stabilized.
+
+The following optional dependencies are only included when various async runtime features are enabled:
+* `async-std` - Included for async compatibility with the `async-std` runtime
+* `mio` - Included for async compatibility with the `mio` runtime
+* `smol` - Included for async compatibility with the `smol` runtime
+* `tokio` - Included for async compatibility with the `tokio` runtime
+* `async-io` - Additional dependency for the `async-std` and `smol` runtimes
 
 We do not plan on adding in any additional dependencies to `tappers`. The one exception to this
 rule is that some common structs (e.g. `MacAddr`, `Interface`) may be split out into a separate

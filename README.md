@@ -222,12 +222,12 @@ All `Tun` and `Tap` types implement synchronous blocking/nonblocking `send()` an
 In addition to this, `tappers` will aim to provide first-class support for the following `async`
 runtimes:
 
-| `async` Runtime | Supported?          |
-| --------------- | ------------------- |
-| `mio`           | ✅*                 |
-| `tokio`         | ✅                  |
-| `async-std`     | ✅ (via `async-io`) |
-| `smol`          | ✅ (via `async-io`) |
+| `async` Runtime | Supported? |
+| --------------- | ---------- |
+| `async-std`     | ✅         |
+| `smol`          | ✅         |
+| `mio`           | ✅*        |
+| `tokio`         | ✅         |
 
 `*` - on all platforms except for Windows
 

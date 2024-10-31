@@ -1,5 +1,9 @@
 # Release History:
 
+* 0.4.1
+  - Revise internals of async `send()`/`recv()` to fix issues polling HANDLEs in Windows
+  - Separate `async_io` interfaces into `smol` and `async_std`
+
 * 0.4.0
   - Change `send()`, `recv()` functions to be immutable
   - Add async implementations for `async-std`, `mio`, `smol`, `tokio`

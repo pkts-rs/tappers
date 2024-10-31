@@ -10,14 +10,10 @@
 
 use std::io;
 use std::mem::ManuallyDrop;
-#[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
-#[cfg(target_os = "windows")]
-use std::os::windows::io::{FromRawSocket, RawSocket};
 
-#[cfg(not(target_os = "windows"))]
 use crate::{AddAddress, AddressInfo};
 use crate::{DeviceState, Interface, Tun};
 
@@ -40,10 +36,7 @@ impl AsyncTun {
 
         // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
         // implementation so that the descriptor isn't closed twice.
-        #[cfg(not(target_os = "windows"))]
         let io = unsafe { UdpSocket::from_raw_fd(tun.as_raw_fd()) };
-        #[cfg(target_os = "windows")]
-        let io = unsafe { UdpSocket::from_raw_socket(tun.read_handle() as RawSocket) };
 
         Ok(Self {
             tun,
@@ -59,10 +52,7 @@ impl AsyncTun {
 
         // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
         // implementation so that the descriptor isn't closed twice.
-        #[cfg(not(target_os = "windows"))]
         let io = unsafe { UdpSocket::from_raw_fd(tun.as_raw_fd()) };
-        #[cfg(target_os = "windows")]
-        let io = unsafe { UdpSocket::from_raw_socket(tun.read_handle() as RawSocket) };
 
         Ok(Self {
             tun,
@@ -110,7 +100,6 @@ impl AsyncTun {
     /// TUN device. As such, portable applications **should not** rely on the assumption that the
     /// only addresses returned from this method are those that were previously assigned via
     /// [`add_addr()`](Self::add_addr).
-    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
         self.tun.addrs()
@@ -131,14 +120,12 @@ impl AsyncTun {
     /// No platforms assign link-local IPv6 addresses to TUN devices on creation. However, OpenBSD
     /// **will** assign a link-local IPv6 address (in addition to the specified IPv6 address) the
     /// first time an IPv6 address is assigned to a TUN device.
-    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
         self.tun.add_addr(req)
     }
 
     /// Removes the specified network-layer address from the interface.
-    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
         self.tun.remove_addr(addr)
@@ -186,6 +173,6 @@ impl Drop for AsyncTun {
         // This ensures that `UdpSocket` is dropped properly while not double-closing the RawFd.
         // SAFETY: `self.io` won't be accessed after this thanks to ManuallyDrop
         let io = unsafe { ManuallyDrop::take(&mut self.io) };
-        io.into_raw_fd();
+        let _ = io.into_raw_fd();
     }
 }

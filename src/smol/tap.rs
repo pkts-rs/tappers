@@ -8,90 +8,123 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+// smol::unblock
+// async_std::task::spawn_blocking
+
 use std::io;
-use std::mem::ManuallyDrop;
+#[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
-#[cfg(not(target_os = "windows"))]
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
 
 #[cfg(not(target_os = "windows"))]
-use crate::Tap;
 use crate::{AddAddress, AddressInfo};
-use crate::{DeviceState, Interface};
+use crate::{DeviceState, Interface, Tap};
 
-use mio::event::Source;
-use mio::net::UdpSocket;
-use mio::{Interest, Registry, Token};
+#[cfg(not(target_os = "windows"))]
+use async_io::Async;
+
+#[cfg(target_os = "windows")]
+struct TapWrapper(Tap);
+
+#[cfg(target_os = "windows")]
+impl TapWrapper {
+    #[inline]
+    pub fn get_ref(&self) -> &Tap {
+        &self.0
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut Tap {
+        &mut self.0
+    }
+}
 
 /// A cross-platform asynchronous TAP interface, suitable for tunnelling link-layer packets.
 pub struct AsyncTap {
     #[cfg(not(target_os = "windows"))]
-    tap: Tap,
-    /// SAFETY: file descriptor/handle is closed when `tap` goes out of scope, so this doesn't need to.
-    io: ManuallyDrop<UdpSocket>,
+    tap: Async<Tap>,
+    #[cfg(target_os = "windows")]
+    tap: TapWrapper,
 }
 
 impl AsyncTap {
     /// Creates a new, unique TAP device.
     #[inline]
     pub fn new() -> io::Result<Self> {
+        Self::new_impl()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn new_impl() -> io::Result<Self> {
         let mut tap = Tap::new()?;
         tap.set_nonblocking(true)?;
 
-        // SAFETY: `AsyncTap` ensures that the RawFd is extracted from `io` in its drop()
-        // implementation so that the descriptor isn't closed twice.
-        let io = unsafe { UdpSocket::from_raw_fd(tap.as_raw_fd()) };
+        Ok(Self {
+            tap: Async::new(tap)?,
+        })
+    }
+
+    #[cfg(target_os = "windows")]
+    fn new_impl() -> io::Result<Self> {
+        let mut tap = Tap::new()?;
 
         Ok(Self {
-            tap,
-            io: ManuallyDrop::new(io),
+            tap: TapWrapper(tap),
         })
     }
 
     /// Opens or creates a TAP device of the given name.
     #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
+        Self::new_named_impl(if_name)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
         let mut tap = Tap::new_named(if_name)?;
         tap.set_nonblocking(true)?;
 
-        // SAFETY: `AsyncTap` ensures that the RawFd is extracted from `io` in its drop()
-        // implementation so that the descriptor isn't closed twice.
-        let io = unsafe { UdpSocket::from_raw_fd(tap.as_raw_fd()) };
+        Ok(Self {
+            tap: Async::new(tap)?,
+        })
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
+        let mut tap = Tap::new_named(if_name)?;
 
         Ok(Self {
-            tap,
-            io: ManuallyDrop::new(io),
+            tap: TapWrapper(tap),
         })
     }
 
     /// Retrieves the interface name of the TAP device.
     #[inline]
     pub fn name(&self) -> io::Result<Interface> {
-        self.tap.name()
+        self.tap.get_ref().name()
     }
 
     /// Sets the adapter state of the TAP device (e.g. "up" or "down").
     #[inline]
     pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
-        self.tap.set_state(state)
+        unsafe { self.tap.get_mut().set_state(state) }
     }
 
     /// Sets the adapter state of the TAP device to "up".
     #[inline]
     pub fn set_up(&mut self) -> io::Result<()> {
-        self.tap.set_state(DeviceState::Up)
+        unsafe { self.tap.get_mut().set_state(DeviceState::Up) }
     }
 
     /// Sets the adapter state of the TAP device to "down".
     #[inline]
     pub fn set_down(&mut self) -> io::Result<()> {
-        self.tap.set_state(DeviceState::Down)
+        unsafe { self.tap.get_mut().set_state(DeviceState::Down) }
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TAP device.
     #[inline]
     pub fn mtu(&self) -> io::Result<usize> {
-        self.tap.mtu()
+        self.tap.get_ref().mtu()
     }
 
     /// Retrieves the network-layer addresses assigned to the interface.
@@ -100,9 +133,10 @@ impl AsyncTap {
     /// Developers should take this into account and avoid the incorrect assumption that `addrs()`
     /// will return only the addresses they have assigned via [`add_addr()`](Self::add_addr).
     /// [`add_addr()`](Self::add_addr).
+    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
-        self.tap.addrs()
+        self.tap.get_ref().addrs()
     }
 
     // TODO: this used to be the case, but now it's not??
@@ -110,59 +144,50 @@ impl AsyncTap {
     //    /// device. Neither FreeBSD nor DragonFlyBSD include this restriction.
 
     /// Assigns a network-layer address to the interface.
+    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
-        self.tap.add_addr(req)
+        self.tap.get_ref().add_addr(req)
     }
 
     /// Removes the specified network-layer address from the interface.
+    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
-        self.tap.remove_addr(addr)
+        self.tap.get_ref().remove_addr(addr)
     }
 
     /// Sends a packet over the TAP device.
     #[inline]
-    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        self.tap.send(buf)
+    pub async fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        self.send_impl(buf).await
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[inline]
+    async fn send_impl(&self, buf: &[u8]) -> io::Result<usize> {
+        self.tap.write_with(|inner| inner.send(buf)).await
+    }
+
+    #[cfg(target_os = "windows")]
+    #[inline]
+    async fn send_impl(&self, buf: &[u8]) -> io::Result<usize> {
+        async_std::task::spawn_blocking(|| self.tap.get_ref().send(buf)).await
     }
 
     /// Receives a packet over the TAP device.
     #[inline]
-    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.io.recv(buf)
-    }
-}
-
-impl Source for AsyncTap {
-    fn register(
-        &mut self,
-        registry: &Registry,
-        token: Token,
-        interests: Interest,
-    ) -> io::Result<()> {
-        self.io.register(registry, token, interests)
+    pub async fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.recv_impl(buf).await
     }
 
-    fn reregister(
-        &mut self,
-        registry: &Registry,
-        token: Token,
-        interests: Interest,
-    ) -> io::Result<()> {
-        self.io.reregister(registry, token, interests)
+    #[cfg(not(target_os = "windows"))]
+    pub async fn recv_impl(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.tap.read_with(|inner| inner.recv(buf)).await
     }
 
-    fn deregister(&mut self, registry: &Registry) -> io::Result<()> {
-        self.io.deregister(registry)
-    }
-}
-
-impl Drop for AsyncTap {
-    fn drop(&mut self) {
-        // This ensures that `UdpSocket` is dropped properly while not double-closing the RawFd.
-        // SAFETY: `self.io` won't be accessed after this thanks to ManuallyDrop
-        let io = unsafe { ManuallyDrop::take(&mut self.io) };
-        let _ = io.into_raw_fd();
+    #[cfg(target_os = "windows")]
+    pub async fn recv_impl(&self, buf: &mut [u8]) -> io::Result<usize> {
+        async_std::task::spawn_blocking(|| self.tap.get_ref().recv(buf)).await
     }
 }

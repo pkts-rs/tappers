@@ -170,6 +170,14 @@ impl TunImpl {
     }
 }
 
+// SAFETY: the NonNull pointer in `TunImpl` references data not on the stack, so it is safe to
+// move across thread boundaries
+unsafe impl Send for TunImpl {}
+
+// SAFETY: the NonNull pointer in `TunImpl` is only used in a thread-safe manner, so `TunImpl`
+// can be immutably shared across threads.
+unsafe impl Sync for TunImpl {}
+
 /*
 TODO: add IP address setting like so:
 

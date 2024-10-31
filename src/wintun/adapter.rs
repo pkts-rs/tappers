@@ -301,3 +301,11 @@ impl Drop for TunAdapter {
         }
     }
 }
+
+// SAFETY: the NonNull pointer in `TunAdapter` references data not on the stack, so it is safe to
+// move across thread boundaries
+unsafe impl Send for TunAdapter {}
+
+// SAFETY: the NonNull pointer in `TunAdapter` is only used in a thread-safe manner, so `TunAdapter`
+// can be immutably shared across threads.
+unsafe impl Sync for TunAdapter {}

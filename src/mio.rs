@@ -10,11 +10,9 @@
 
 //! Async `Tun`/`Tap` interfaces compatible with `mio`.
 
-#[cfg(not(target_os = "windows"))]
 mod tap;
 mod tun;
 
-#[cfg(not(target_os = "windows"))]
 pub use tap::AsyncTap;
 pub use tun::AsyncTun;
 

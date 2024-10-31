@@ -9,76 +9,35 @@
 // except according to those terms.
 
 #[cfg(target_os = "windows")]
-use std::cmp;
+use std::borrow::ToOwned;
 use std::io;
 #[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
 #[cfg(target_os = "windows")]
-use std::os::windows::io::{AsSocket, BorrowedSocket, RawSocket};
-#[cfg(target_os = "windows")]
-use std::time::Duration;
+use std::sync::Arc;
+
+#[cfg(not(target_os = "windows"))]
+use async_io::Async;
 
 #[cfg(not(target_os = "windows"))]
 use crate::{AddAddress, AddressInfo};
 use crate::{DeviceState, Interface, Tun};
 
-use async_io::Async;
 #[cfg(target_os = "windows")]
-use async_io::Timer;
-
-#[cfg(target_os = "windows")]
-struct TunWrapper(Tun);
+#[derive(Clone)]
+struct TunWrapper(Arc<Tun>);
 
 #[cfg(target_os = "windows")]
 impl TunWrapper {
     #[inline]
-    pub fn name(&self) -> io::Result<Interface> {
-        self.0.name()
+    pub fn get_ref(&self) -> &Tun {
+        self.0.as_ref()
     }
 
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
-        self.0.set_state(state)
-    }
-
-    #[inline]
-    pub fn set_up(&mut self) -> io::Result<()> {
-        self.0.set_up()
-    }
-
-    #[inline]
-    pub fn set_down(&mut self) -> io::Result<()> {
-        self.0.set_down()
-    }
-
-    #[inline]
-    pub fn mtu(&self) -> io::Result<usize> {
-        self.0.mtu()
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    #[inline]
-    pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
-        self.0.addrs()
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    #[inline]
-    pub fn add_addr<A: Into<AddAddress>>(&self, req: A) -> io::Result<()> {
-        self.0.add_addr(req)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    #[inline]
-    pub fn remove_addr(&self, addr: IpAddr) -> io::Result<()> {
-        self.0.remove_addr(addr)
-    }
-}
-
-#[cfg(target_os = "windows")]
-impl AsSocket for TunWrapper {
-    fn as_socket(&self) -> BorrowedSocket<'_> {
-        unsafe { BorrowedSocket::borrow_raw(self.0.read_handle() as RawSocket) }
+    pub fn get_mut(&mut self) -> &mut Tun {
+        // SAFETY: we never use this within spawn_blocking or similar async contexts
+        Arc::<Tun>::get_mut(&mut self.0).unwrap()
     }
 }
 
@@ -87,7 +46,7 @@ pub struct AsyncTun {
     #[cfg(not(target_os = "windows"))]
     tun: Async<Tun>,
     #[cfg(target_os = "windows")]
-    tun: Async<TunWrapper>,
+    tun: TunWrapper,
 }
 
 impl AsyncTun {
@@ -97,16 +56,6 @@ impl AsyncTun {
         Self::new_impl()
     }
 
-    #[cfg(target_os = "windows")]
-    fn new_impl() -> io::Result<Self> {
-        let mut tun = Tun::new()?;
-        tun.set_nonblocking(true)?;
-
-        Ok(Self {
-            tun: Async::new(TunWrapper(tun))?,
-        })
-    }
-
     #[cfg(not(target_os = "windows"))]
     fn new_impl() -> io::Result<Self> {
         let mut tun = Tun::new()?;
@@ -114,6 +63,15 @@ impl AsyncTun {
 
         Ok(Self {
             tun: Async::new(tun)?,
+        })
+    }
+
+    #[cfg(target_os = "windows")]
+    fn new_impl() -> io::Result<Self> {
+        let mut tun = Tun::new()?;
+
+        Ok(Self {
+            tun: TunWrapper(Arc::new(tun)),
         })
     }
 
@@ -136,10 +94,9 @@ impl AsyncTun {
     #[cfg(target_os = "windows")]
     pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
         let mut tun = Tun::new_named(if_name)?;
-        tun.set_nonblocking(true)?;
 
         Ok(Self {
-            tun: Async::new(TunWrapper(tun))?,
+            tun: TunWrapper(Arc::new(tun)),
         })
     }
 
@@ -218,18 +175,9 @@ impl AsyncTun {
     #[cfg(target_os = "windows")]
     #[inline]
     async fn send_impl(&self, buf: &[u8]) -> io::Result<usize> {
-        const SEND_MAX_BLOCKING_INTERVAL: u64 = 100;
-        let mut timeout = 1; // Start with 1 millisecond timeout
-
-        loop {
-            match self.tun.as_ref().0.send(buf) {
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    Timer::after(Duration::from_millis(timeout)).await;
-                    timeout = cmp::min(timeout * 2, SEND_MAX_BLOCKING_INTERVAL);
-                }
-                res => return res,
-            }
-        }
+        let arc = self.tun.clone();
+        let buf = buf.to_owned();
+        async_std::task::spawn_blocking(move || arc.get_ref().send(buf.as_slice())).await
     }
 
     /// Receives a packet over the TUN device.
@@ -245,6 +193,25 @@ impl AsyncTun {
 
     #[cfg(target_os = "windows")]
     pub async fn recv_impl(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.tun.read_with(|inner| inner.0.recv(buf)).await
+        // Prepare to share ownership of `Tun` with a blocking thread
+        let arc = self.tun.clone();
+        let buflen = buf.len();
+
+        // Run `recv()` in a blocking thread
+        let (res, data) = async_std::task::spawn_blocking(move || {
+            let mut buf = vec![0; buflen];
+            let res = arc.get_ref().recv(buf.as_mut_slice());
+            (res, buf)
+        })
+        .await;
+
+        // Copy data output from the blocking thread to `buf`
+        match res {
+            Ok(len) => {
+                buf[..len].copy_from_slice(&data[..len]);
+                Ok(len)
+            }
+            err => err,
+        }
     }
 }

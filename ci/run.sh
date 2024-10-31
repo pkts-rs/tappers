@@ -57,9 +57,11 @@ case "${OS}" in
 
         cargo test --all-targets
 
-        cargo test --all-targets --features async-io
+        cargo test --all-targets --features async-std
 
         cargo test --all-targets --features mio
+
+        cargo test --all-targets --features smol
 
         cargo test --all-targets --features tokio
 

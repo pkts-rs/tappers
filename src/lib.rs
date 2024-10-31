@@ -133,14 +133,16 @@
 // Show required OS/features on docs.rs.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(any(doc, feature = "async-io"))]
-pub mod async_io;
+#[cfg(any(doc, feature = "async-std"))]
+pub mod async_std;
 #[cfg(any(doc, target_os = "linux"))]
 pub mod linux;
 #[cfg(any(doc, target_os = "macos"))]
 pub mod macos;
 #[cfg(any(doc, all(feature = "mio", not(target_os = "windows"))))]
 pub mod mio;
+#[cfg(any(doc, feature = "smol"))]
+pub mod smol;
 #[cfg(any(doc, feature = "tokio"))]
 pub mod tokio;
 #[cfg(any(

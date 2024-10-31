@@ -8,17 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#[cfg(target_os = "windows")]
-use std::cmp;
 use std::io;
-#[cfg(target_os = "windows")]
-use std::mem::ManuallyDrop;
 #[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
-#[cfg(target_os = "windows")]
-use std::os::windows::io::{FromRawSocket, RawSocket};
-#[cfg(target_os = "windows")]
-use std::time::Duration;
 
 #[cfg(not(target_os = "windows"))]
 use crate::{AddAddress, AddressInfo};
@@ -26,10 +18,6 @@ use crate::{DeviceState, Interface, Tap};
 
 #[cfg(not(target_os = "windows"))]
 use tokio::io::unix::AsyncFd;
-#[cfg(target_os = "windows")]
-use tokio::io::Interest;
-#[cfg(target_os = "windows")]
-use tokio::net::UdpSocket;
 
 /// A convenience type used to make internal operations consistent between Windows and Unix.
 #[cfg(target_os = "windows")]
@@ -54,9 +42,6 @@ pub struct AsyncTap {
     tap: AsyncFd<Tap>,
     #[cfg(target_os = "windows")]
     tap: TapWrapper,
-    /// SAFETY: file descriptor/handle is closed when `tap` goes out of scope, so this doesn't need to.
-    #[cfg(target_os = "windows")]
-    io: ManuallyDrop<UdpSocket>,
 }
 
 impl AsyncTap {
@@ -79,19 +64,9 @@ impl AsyncTap {
     #[cfg(target_os = "windows")]
     fn new_impl() -> io::Result<Self> {
         let mut tap = Tap::new()?;
-        tap.set_nonblocking(true)?;
-
-        // SAFETY: `AsyncTap` ensures that the RawFd is extracted from `io` in its drop()
-        // implementation so that the descriptor isn't closed twice.
-        let io = unsafe {
-            UdpSocket::from_std(std::net::UdpSocket::from_raw_socket(
-                tap.read_handle() as RawSocket
-            ))?
-        };
 
         Ok(Self {
             tap: TapWrapper(tap),
-            io: ManuallyDrop::new(io),
         })
     }
 
@@ -114,20 +89,9 @@ impl AsyncTap {
     #[cfg(target_os = "windows")]
     pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
         let mut tap = Tap::new_named(if_name)?;
-        tap.set_nonblocking(true)?;
-
-        // SAFETY: `AsyncTap` ensures that the RawFd is extracted from `io` in its drop()
-        // implementation so that the descriptor isn't closed twice.
-        #[cfg(target_os = "windows")]
-        let io = unsafe {
-            UdpSocket::from_std(std::net::UdpSocket::from_raw_socket(
-                tap.read_handle() as RawSocket
-            ))?
-        };
 
         Ok(Self {
             tap: TapWrapper(tap),
-            io: ManuallyDrop::new(io),
         })
     }
 
@@ -213,18 +177,7 @@ impl AsyncTap {
     #[cfg(target_os = "windows")]
     #[inline]
     async fn send_impl(&self, buf: &[u8]) -> io::Result<usize> {
-        const SEND_MAX_BLOCKING_INTERVAL: u64 = 100;
-        let mut timeout = 1; // Start with 1 millisecond timeout
-
-        loop {
-            match self.tap.get_ref().send(buf) {
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    tokio::time::sleep(Duration::from_millis(timeout)).await;
-                    timeout = cmp::min(timeout * 2, SEND_MAX_BLOCKING_INTERVAL);
-                }
-                res => return res,
-            }
-        }
+        tokio::task::spawn_blocking(|| self.tun.get_ref().send(buf)).await?
     }
 
     /// Receives a packet over the TAP device.
@@ -247,13 +200,6 @@ impl AsyncTap {
 
     #[cfg(target_os = "windows")]
     pub async fn recv_impl(&self, buf: &mut [u8]) -> io::Result<usize> {
-        loop {
-            let mut guard = self.io.readable().await?;
-
-            match guard.try_io(Interest::READABLE, || self.tap.get_ref().recv(buf)) {
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-                res => return res,
-            }
-        }
+        tokio::task::spawn_blocking(|| self.tun.get_ref().recv(buf)).await?
     }
 }

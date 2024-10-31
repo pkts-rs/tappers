@@ -25,14 +25,18 @@ tapwin6 = []
 wintun-runtime = ["wintun"]
 # Enables fallible run-time loading of tap-windows6 (default is load-time)
 tapwin6-runtime = ["tapwin6"]
+async-std = ["dep:async-io", "dep:async-std"]
 mio = ["dep:mio"]
+smol = ["dep:async-io", "dep:smol"]
 tokio = ["dep:tokio"]
-async-io = ["dep:async-io"]
+
 
 [dependencies]
 libc = { version = "0.2" }
 windows-sys = { version = "0.59", features = ["Win32", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System", "Win32_System_LibraryLoader", "Win32_System_Threading"] }
 once_cell = { version = "1.19" }
 mio = { version = "0.8.11", features = ["net"], optional = true }
-tokio = { version = "1.38.1", features = ["net", "time"], optional = true }
+tokio = { version = "1.38.1", features = ["net", "rt", "time"], optional = true }
 async-io = { version = "2.3.4", optional = true }
+smol = { version = "2.0.2", optional = true }
+async-std = { version = "1.13.0", optional = true }

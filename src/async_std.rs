@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Async `Tun`/`Tap` interfaces compatible with `async-std` and/or `smol`.
+//! Async `Tun`/`Tap` interfaces compatible with `async-std`.
 
 #[cfg(not(target_os = "windows"))]
 mod tap;

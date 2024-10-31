@@ -144,11 +144,10 @@ impl<'a> TunSession<'a> {
         // SAFETY: recv_packet is thread-safe
         let recv_pkt = match adapter.wintun.recv_packet(session, &mut packet_size) {
             Ok(pkt) => pkt,
+            Err(e) if e.raw_os_error() == Some(ERROR_NO_MORE_ITEMS as i32) && nonblocking => {
+                return Err(io::ErrorKind::WouldBlock.into())
+            }
             Err(e) if e.raw_os_error() == Some(ERROR_NO_MORE_ITEMS as i32) => loop {
-                if nonblocking {
-                    return Err(io::ErrorKind::WouldBlock.into());
-                }
-
                 let read_handle = adapter.wintun.read_event_handle(session);
                 unsafe { WaitForSingleObject(read_handle, INFINITE) };
                 if let Ok(pkt) = adapter.wintun.recv_packet(session, &mut packet_size) {
@@ -206,3 +205,11 @@ impl Drop for TunSession<'_> {
         }
     }
 }
+
+// SAFETY: the NonNull pointer in `TunSession` references data not on the stack, so it is safe to
+// move across thread boundaries
+unsafe impl Send for TunSession<'_> {}
+
+// SAFETY: the NonNull pointer in `TunSession` is only used in a thread-safe manner, so `TunSession`
+// can be immutably shared across threads.
+unsafe impl Sync for TunSession<'_> {}

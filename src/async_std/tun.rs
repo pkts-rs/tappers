@@ -21,21 +21,20 @@ use crate::{AddAddress, AddressInfo};
 use crate::{DeviceState, Interface, Tun};
 
 #[cfg(not(target_os = "windows"))]
-use tokio::io::unix::AsyncFd;
+use async_io::Async;
 
-/// A convenience type used to make internal operations consistent between Windows and Unix.
 #[cfg(target_os = "windows")]
 #[derive(Clone)]
 struct TunWrapper(Arc<Tun>);
 
 #[cfg(target_os = "windows")]
 impl TunWrapper {
-    /// Returns a reference to the underlying `Tun` function.
+    #[inline]
     pub fn get_ref(&self) -> &Tun {
         self.0.as_ref()
     }
 
-    /// Returns a reference to the underlying `Tap` function.
+    #[inline]
     pub fn get_mut(&mut self) -> &mut Tun {
         // SAFETY: we never use this within spawn_blocking or similar async contexts
         Arc::<Tun>::get_mut(&mut self.0).unwrap()
@@ -45,7 +44,7 @@ impl TunWrapper {
 /// A cross-platform asynchronous TUN interface, suitable for tunnelling network-layer packets.
 pub struct AsyncTun {
     #[cfg(not(target_os = "windows"))]
-    tun: AsyncFd<Tun>,
+    tun: Async<Tun>,
     #[cfg(target_os = "windows")]
     tun: TunWrapper,
 }
@@ -63,14 +62,13 @@ impl AsyncTun {
         tun.set_nonblocking(true)?;
 
         Ok(Self {
-            tun: AsyncFd::new(tun)?,
+            tun: Async::new(tun)?,
         })
     }
 
     #[cfg(target_os = "windows")]
     fn new_impl() -> io::Result<Self> {
         let mut tun = Tun::new()?;
-        tun.set_nonblocking(true)?;
 
         Ok(Self {
             tun: TunWrapper(Arc::new(tun)),
@@ -86,15 +84,16 @@ impl AsyncTun {
     #[cfg(not(target_os = "windows"))]
     pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
         let mut tun = Tun::new_named(if_name)?;
+        tun.set_nonblocking(true)?;
 
         Ok(Self {
-            tun: AsyncFd::new(tun)?,
+            tun: Async::new(tun)?,
         })
     }
 
     #[cfg(target_os = "windows")]
     pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
-        let tun = Tun::new_named(if_name)?;
+        let mut tun = Tun::new_named(if_name)?;
 
         Ok(Self {
             tun: TunWrapper(Arc::new(tun)),
@@ -110,19 +109,19 @@ impl AsyncTun {
     /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     #[inline]
     pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
-        self.tun.get_mut().set_state(state)
+        unsafe { self.tun.get_mut().set_state(state) }
     }
 
     /// Sets the adapter state of the TUN device to "up".
     #[inline]
     pub fn set_up(&mut self) -> io::Result<()> {
-        self.tun.get_mut().set_state(DeviceState::Up)
+        unsafe { self.tun.get_mut().set_state(DeviceState::Up) }
     }
 
     /// Sets the adapter state of the TUN device to "down".
     #[inline]
     pub fn set_down(&mut self) -> io::Result<()> {
-        self.tun.get_mut().set_state(DeviceState::Down)
+        unsafe { self.tun.get_mut().set_state(DeviceState::Down) }
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TUN device.
@@ -170,14 +169,7 @@ impl AsyncTun {
     #[cfg(not(target_os = "windows"))]
     #[inline]
     async fn send_impl(&self, buf: &[u8]) -> io::Result<usize> {
-        loop {
-            let mut guard = self.tun.readable().await?;
-
-            match guard.try_io(|inner| inner.get_ref().send(buf)) {
-                Ok(result) => return result,
-                Err(_would_block) => continue,
-            }
-        }
+        self.tun.write_with(|inner| inner.send(buf)).await
     }
 
     #[cfg(target_os = "windows")]
@@ -185,7 +177,7 @@ impl AsyncTun {
     async fn send_impl(&self, buf: &[u8]) -> io::Result<usize> {
         let arc = self.tun.clone();
         let buf = buf.to_owned();
-        tokio::task::spawn_blocking(move || arc.get_ref().send(buf.as_slice())).await?
+        smol::unblock(move || arc.get_ref().send(buf.as_slice())).await
     }
 
     /// Receives a packet over the TUN device.
@@ -196,14 +188,7 @@ impl AsyncTun {
 
     #[cfg(not(target_os = "windows"))]
     pub async fn recv_impl(&self, buf: &mut [u8]) -> io::Result<usize> {
-        loop {
-            let mut guard = self.tun.readable().await?;
-
-            match guard.try_io(|inner| inner.get_ref().recv(buf)) {
-                Ok(result) => return result,
-                Err(_would_block) => continue,
-            }
-        }
+        self.tun.read_with(|inner| inner.recv(buf)).await
     }
 
     #[cfg(target_os = "windows")]
@@ -213,12 +198,12 @@ impl AsyncTun {
         let buflen = buf.len();
 
         // Run `recv()` in a blocking thread
-        let (res, data) = tokio::task::spawn_blocking(move || {
+        let (res, data) = smol::unblock(move || {
             let mut buf = vec![0; buflen];
             let res = arc.get_ref().recv(buf.as_mut_slice());
             (res, buf)
         })
-        .await?;
+        .await;
 
         // Copy data output from the blocking thread to `buf`
         match res {

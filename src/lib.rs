@@ -167,7 +167,7 @@ mod rtnetlink;
     target_os = "netbsd",
     target_os = "openbsd"
 ))]
-mod sysctl;
+mod rtmsg;
 #[cfg(not(target_os = "windows"))]
 mod tap;
 #[cfg(any(not(target_os = "windows"), feature = "wintun"))]
@@ -209,7 +209,7 @@ use crate::libc_extra::*;
 #[cfg(target_os = "linux")]
 use rtnetlink::{
     AddressAttr, AddressAttrRef, NetlinkRequest, NetlinkResponseRef, NlmsgDeleteAddress,
-    NlmsgGetAddress, NlmsgNewAddress, NlmsgPayload, NlmsgPayloadRef,
+    NlmsgGetAddress, NlmsgNewAddress, NlmsgNewRoute, NlmsgPayload, NlmsgPayloadRef, RouteAttr,
 };
 #[cfg(any(
     target_os = "dragonfly",
@@ -218,7 +218,7 @@ use rtnetlink::{
     target_os = "netbsd",
     target_os = "openbsd"
 ))]
-use sysctl::*;
+use rtmsg::*;
 
 #[cfg(target_os = "linux")]
 const NETLINK_MAX_RECV: usize = 65536;
@@ -325,6 +325,63 @@ impl AddressInfoV6 {
     /// The netmask associated with the interface.
     pub fn netmask(&self) -> Option<Netmask> {
         self.netmask
+    }
+}
+
+/*
+/// Information associated with an interface IP address.
+#[derive(Clone, Debug)]
+pub enum RouteInfo {
+    V4(RouteInfoV4),
+    V6(RouteInfoV6),
+}
+
+/// An information type used to add an IPv4 address and its associated information (desination
+/// address, netmask, etc.) to an interface.
+#[derive(Clone, Debug)]
+pub struct RouteInfoV4 {
+    addr: Ipv4Addr,
+    brd: Option<Ipv4Addr>,
+    dst: Option<Ipv4Addr>,
+    netmask: Option<Netmask>,
+}
+
+/// An information type used to add an IPv4 address and its associated information (desination
+/// address, netmask, etc.) to an interface.
+#[derive(Clone, Debug)]
+pub struct RouteInfoV6 {
+    addr: Ipv6Addr,
+    brd: Option<Ipv6Addr>,
+    dst: Option<Ipv6Addr>,
+    netmask: Option<Netmask>,
+}
+*/
+
+/// An information type used to add a route and its associated information (netmask, table ID, etc)
+/// to an interface.
+#[derive(Clone, Debug)]
+pub struct AddRoute {
+    addr: IpAddr,
+    netmask: Option<Netmask>,
+    // Output interface is the TUN/TAP device by default
+// Linux-specific:
+//    table_id: Option<u8>, // defaults to RT_TABLE_MAIN
+//    scope: Option<u8>, // defaults to RT_SCOPE_UNIVERSE
+}
+
+impl AddRoute {
+    pub fn new(addr: IpAddr) -> Self {
+        Self {
+            addr,
+            netmask: None,
+//            table_id: None,
+//            scope: None,
+        }
+    }
+
+    #[inline]
+    pub fn set_netmask(&mut self, netmask: Netmask) {
+        self.netmask = Some(netmask);
     }
 }
 
@@ -996,7 +1053,7 @@ impl Interface {
             libc::PF_ROUTE,
             0,
             libc::AF_UNSPEC, // address family
-            libc::NET_RT_IFLIST,
+            libc::NET_RT_IFLIST, // NET_RT_DUMP for route info
             if_index as i32,
         ];
 
@@ -1046,7 +1103,7 @@ impl Interface {
         let if_list = IfList::new(buf.as_slice());
         for message in if_list {
             match message? {
-                SysctlMessage::NewAddress(new_addr) => {
+                RtMsgRef::NewAddress(new_addr) => {
                     let mut dst = None;
                     let mut mask = None;
                     let mut addr = None;
@@ -1150,7 +1207,6 @@ impl Interface {
     #[cfg(target_os = "linux")]
     fn add_addr_impl(&self, req: AddAddress) -> io::Result<()> {
         let index = self.index()?;
-        // BUG: netmask unused
 
         let (family, default_prefixlen) = match req {
             AddAddress::V4(_) => (libc::AF_INET, 32),
@@ -1674,7 +1730,156 @@ impl Interface {
         }
     }
 
+    #[cfg(not(target_os = "windows"))]
+    #[inline]
+    pub(crate) fn add_route<A: Into<AddRoute>>(&self, req: A) -> io::Result<()> {
+        self.add_route_impl(req.into())
+    }
+
+    // See the following for Netlink examples:
+    // https://olegkutkov.me/2018/02/14/monitoring-linux-networking-state-using-netlink/
+
     #[cfg(target_os = "linux")]
+    fn add_route_impl(&self, req: AddRoute) -> io::Result<()> {
+        let index = self.index()?;
+
+        let family = match req.addr {
+            IpAddr::V4(_) => libc::AF_INET as u8,
+            IpAddr::V6(_) => libc::AF_INET6 as u8,
+        };
+
+        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let local = sockaddr_nl {
+            nl_family: libc::AF_NETLINK as u16,
+            nl_pad: 0,
+            nl_pid: 0,
+            nl_groups: 0,
+        };
+        let local_len = mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t;
+
+        if unsafe { libc::bind(fd, ptr::addr_of!(local) as *const libc::sockaddr, local_len) } < 0 {
+            let err = io::Error::last_os_error();
+            Self::close_fd(fd);
+            return Err(err);
+        }
+
+        let nlreq = NetlinkRequest {
+            flags: (libc::NLM_F_CREATE | libc::NLM_F_EXCL | libc::NLM_F_REQUEST | libc::NLM_F_ACK)
+                as u16,
+            seq: 1,
+            pid: 0,
+            payload: NlmsgPayload::NewRoute(NlmsgNewRoute {
+                family,
+                dst_len: req.netmask.unwrap_or(32),
+                src_len: 0,
+                tos: 0,
+                table_id: libc::RT_TABLE_MAIN,
+                protocol: libc::RTPROT_STATIC, // Administrator configured
+                scope: libc::RT_SCOPE_UNIVERSE,
+                route_type: libc::RTN_UNICAST,
+                flags: 0,
+                attrs: vec![RouteAttr::Destination(req.addr), RouteAttr::OutputInterface(index as i32)],
+            })
+        };
+
+        let mut req_bytes = nlreq.serialize();
+
+        let mut iov = libc::iovec {
+            iov_base: req_bytes.as_mut_ptr() as *mut libc::c_void,
+            iov_len: req_bytes.len(),
+        };
+
+        let mut dst_addr = sockaddr_nl {
+            nl_family: libc::AF_NETLINK as u16,
+            nl_pad: 0,
+            nl_pid: 0,
+            nl_groups: 0,
+        };
+
+        let msg = libc::msghdr {
+            msg_name: ptr::addr_of_mut!(dst_addr) as *mut libc::c_void,
+            msg_namelen: mem::size_of::<libc::sockaddr_nl>() as u32,
+            msg_iov: ptr::addr_of_mut!(iov),
+            msg_iovlen: 1,
+            msg_control: ptr::null_mut(),
+            msg_controllen: 0,
+            msg_flags: 0,
+        };
+
+        let res = unsafe { libc::sendmsg(fd, ptr::addr_of!(msg), 0) };
+        if res < 0 {
+            let err = io::Error::last_os_error();
+            Self::close_fd(fd);
+            return Err(err);
+        }
+
+        let mut buf = Vec::<u8>::new();
+        buf.reserve_exact(NETLINK_MAX_RECV);
+
+        let len = unsafe {
+            libc::recv(
+                fd,
+                buf.as_mut_ptr() as *mut libc::c_void,
+                NETLINK_MAX_RECV,
+                0,
+            )
+        };
+
+        if len < 0 {
+            let err = io::Error::last_os_error();
+            Self::close_fd(fd);
+            return Err(err);
+        }
+
+        unsafe {
+            buf.set_len(len as usize);
+        }
+
+        Self::close_fd(fd);
+
+        let resp = NetlinkResponseRef::new(buf.as_slice());
+        let msg = resp.messages().next().ok_or(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "netlink ADD_ROUTE request returned no response",
+        ))??;
+
+        match msg.payload() {
+            NlmsgPayloadRef::Error(e) => {
+                if e.errno() == 0 {
+                    Ok(())
+                } else {
+                    Err(io::Error::from_raw_os_error(e.errno()))
+                }
+            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "netlink ADD_ROUTE request returned unexpected response type",
+            )),
+        }
+    }
+
+    /*
+    #[cfg(not(target_os = "windows"))]
+    #[inline]
+    pub(crate) fn routes<A: Into<AddRoute>>(&self, req: A) -> io::Result<()> {
+        self.routes_impl(req.into())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn routes_impl(&self) -> io::Result<RouteInfo> {
+
+    }
+
+    fn remove_route(&self, addr: IpAddr) -> io::Result<()> {
+
+    }
+    */
+
+    #[cfg(not(target_os = "windows"))]
     #[inline]
     fn close_fd(fd: RawFd) {
         unsafe {

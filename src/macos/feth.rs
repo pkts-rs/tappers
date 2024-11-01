@@ -313,7 +313,7 @@ impl FethTap {
         })
     }
 
-    /// Determines whether Link Receive Offload (LRO) is enabled for all TAP (feth) devices.
+    /// Determines whether LinkAddr Receive Offload (LRO) is enabled for all TAP (feth) devices.
     pub fn lro() -> io::Result<bool> {
         let mut lro = 0u32;
         let mut lro_len = mem::size_of_val(&lro);
@@ -332,7 +332,7 @@ impl FethTap {
         }
     }
 
-    /// Enables or disables Link Receive Offload for all TAP (feth) devices.
+    /// Enables or disables LinkAddr Receive Offload for all TAP (feth) devices.
     pub fn set_lro(lro_enabled: bool) -> io::Result<()> {
         let mut lro = match lro_enabled {
             true => 1i32,

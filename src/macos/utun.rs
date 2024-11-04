@@ -181,7 +181,7 @@ impl Utun {
         let if_name = self.name()?;
 
         let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_i8(),
+            ifr_name: if_name.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_devmtu: libc::ifdevmtu {
                     ifdm_current: 0,
@@ -204,7 +204,7 @@ impl Utun {
         let if_name = self.name()?;
 
         let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_i8(),
+            ifr_name: if_name.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -224,7 +224,7 @@ impl Utun {
         let if_name = self.name()?;
 
         let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_i8(),
+            ifr_name: if_name.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 

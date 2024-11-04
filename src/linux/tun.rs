@@ -69,7 +69,7 @@ impl Tun {
         let flags = libc::IFF_TUN | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_i8(),
+            ifr_name: if_name.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_flags: flags as i16,
             },
@@ -93,7 +93,7 @@ impl Tun {
         let flags = libc::IFF_TUN_EXCL | libc::IFF_TUN | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_i8(),
+            ifr_name: if_name.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_flags: flags as i16,
             },
@@ -151,9 +151,9 @@ impl Tun {
         let old_if_name = self.name()?;
 
         let mut req = libc::ifreq {
-            ifr_name: old_if_name.name_raw_i8(),
+            ifr_name: old_if_name.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
-                ifru_newname: if_name.name_raw_i8(),
+                ifru_newname: if_name.name_raw_char(),
             },
         };
 
@@ -227,7 +227,7 @@ impl Tun {
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TUN device.
     pub fn mtu(&self) -> io::Result<usize> {
-        let ifr_name = self.name()?.name_raw_i8();
+        let ifr_name = self.name()?.name_raw_char();
 
         let mut req = libc::ifreq {
             ifr_name,
@@ -254,7 +254,7 @@ impl Tun {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "MTU too large"));
         }
 
-        let ifr_name = self.name()?.name_raw_i8();
+        let ifr_name = self.name()?.name_raw_char();
 
         let mut req = libc::ifreq {
             ifr_name,

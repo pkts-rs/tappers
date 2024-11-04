@@ -54,7 +54,8 @@ impl Tap {
         let mut buf = [0u8; 4];
         let mut buflen = 4usize;
 
-        const DEVFS_CLONING: *const i8 = b"net.link.tap.devfs_cloning\0".as_ptr() as *const i8;
+        const DEVFS_CLONING: *const libc::c_char =
+            b"net.link.tap.devfs_cloning\0".as_ptr() as *const libc::c_char;
 
         if unsafe {
             libc::sysctlbyname(
@@ -79,7 +80,7 @@ impl Tap {
     /// Clones a new TAP interface from `/dev/tap`.
     #[cfg(target_os = "freebsd")]
     fn new_from_cloned() -> io::Result<Self> {
-        let tap_ptr = b"/dev/tap\0".as_ptr() as *const i8;
+        let tap_ptr = b"/dev/tap\0".as_ptr() as *const libc::c_char;
         // TODO: unify `ErrorKind`s returned
         let fd = unsafe { libc::open(tap_ptr, libc::O_CREAT | libc::O_RDWR | libc::O_CLOEXEC) };
         if fd < 0 {
@@ -161,7 +162,7 @@ impl Tap {
         let ctrl_fd = Self::ctrl_fd();
 
         let mut req = ifreq_empty();
-        req.ifr_name = iface.name_raw_i8();
+        req.ifr_name = iface.name_raw_char();
 
         // FreeBSD and DragonFly BSD return ENXIO ("Device not configured") for SIOCIFCREATE and
         // use SIOCIFCREATE2 instead within their `ifconfig` implementation. It passes no argument
@@ -185,7 +186,7 @@ impl Tap {
         }
 
         let tap_path = [b"/dev/", iface.name_cstr().to_bytes_with_nul()].concat();
-        let tap_ptr = tap_path.as_ptr() as *const i8;
+        let tap_ptr = tap_path.as_ptr() as *const libc::c_char;
 
         let fd = unsafe { libc::open(tap_ptr, libc::O_CREAT | libc::O_RDWR | libc::O_CLOEXEC) };
         if fd < 0 {
@@ -269,7 +270,7 @@ impl Tap {
         let ctrl_fd = Self::ctrl_fd();
 
         let mut req = ifreq_empty();
-        req.ifr_name = self.iface.name_raw_i8();
+        req.ifr_name = self.iface.name_raw_char();
 
         if unsafe { libc::ioctl(ctrl_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             let err = io::Error::last_os_error();
@@ -297,7 +298,7 @@ impl Tap {
         let ctrl_fd = Self::ctrl_fd();
 
         let mut req = ifreq_empty();
-        req.ifr_name = self.iface.name_raw_i8();
+        req.ifr_name = self.iface.name_raw_char();
 
         if unsafe { libc::ioctl(ctrl_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             let err = io::Error::last_os_error();
@@ -332,7 +333,7 @@ impl Tap {
     #[inline]
     pub fn mtu(&self) -> io::Result<usize> {
         let mut req = ifreq_empty();
-        req.ifr_name = self.iface.name_raw_i8();
+        req.ifr_name = self.iface.name_raw_char();
 
         unsafe {
             match libc::ioctl(self.fd, SIOCGIFMTU, ptr::addr_of_mut!(req)) {
@@ -360,7 +361,7 @@ impl Tap {
         };
 
         let mut req = ifreq_empty();
-        req.ifr_name = self.iface.name_raw_i8();
+        req.ifr_name = self.iface.name_raw_char();
         req.ifr_ifru.ifru_mtu = mtu;
 
         unsafe {
@@ -427,7 +428,7 @@ impl Tap {
     #[inline]
     fn destroy_iface(fd: RawFd, iface: Interface) {
         let mut req = ifreq_empty();
-        req.ifr_name = iface.name_raw_i8();
+        req.ifr_name = iface.name_raw_char();
 
         unsafe {
             debug_assert_eq!(libc::ioctl(fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)), 0);

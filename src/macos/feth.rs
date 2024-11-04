@@ -18,9 +18,10 @@ use crate::libc_extra::*;
 use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface, MacAddr};
 
-const DEV_BPF: *const i8 = b"/dev/bpf\0".as_ptr() as *const i8;
+const DEV_BPF: *const libc::c_char = b"/dev/bpf\0".as_ptr() as *const libc::c_char;
 const FETH_PREFIX: &[u8] = b"feth";
-const NET_LINK_FAKE_LRO: *const i8 = b"net.link.fake.lro\0".as_ptr() as *const i8;
+const NET_LINK_FAKE_LRO: *const libc::c_char =
+    b"net.link.fake.lro\0".as_ptr() as *const libc::c_char;
 
 const BPF_CREATE_ATTEMPTS: u32 = 1024;
 const BPF_BUFFER_LEN: i32 = 131072;
@@ -108,7 +109,7 @@ impl FethTap {
         // Create the primary `feth` device
 
         let mut req = libc::ifreq {
-            ifr_name: iface.name_raw_i8(),
+            ifr_name: iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -124,7 +125,7 @@ impl FethTap {
         // Create the peer `feth` device
 
         let mut peer_req = libc::ifreq {
-            ifr_name: peer_iface.name_raw_i8(),
+            ifr_name: peer_iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -143,7 +144,7 @@ impl FethTap {
         let mut fake_req = if_fake_request {
             iffr_reserved: [0u64; 4],
             iffr_u: __c_anonymous_iffr_u {
-                iffru_peer_name: peer_iface.name_raw_i8(),
+                iffru_peer_name: peer_iface.name_raw_char(),
             },
         };
 
@@ -366,7 +367,7 @@ impl FethTap {
     /// Returns the Maximum Transmission Unit (MTU) of the TAP device.
     pub fn mtu(&self) -> io::Result<usize> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_devmtu: libc::ifdevmtu {
                     ifdm_current: 0,
@@ -388,7 +389,7 @@ impl FethTap {
     /// set to.
     pub fn min_mtu(&self) -> io::Result<usize> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_devmtu: libc::ifdevmtu {
                     ifdm_current: 0,
@@ -410,7 +411,7 @@ impl FethTap {
     /// set to.
     pub fn max_mtu(&self) -> io::Result<usize> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_devmtu: libc::ifdevmtu {
                     ifdm_current: 0,
@@ -438,7 +439,7 @@ impl FethTap {
         })?;
 
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_mtu: mtu },
         };
 
@@ -453,7 +454,7 @@ impl FethTap {
     /// Retrieves the current state of the TAP device (i.e. "up" or "down").
     pub fn state(&self) -> io::Result<DeviceState> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -471,13 +472,13 @@ impl FethTap {
     /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
         /*
         let mut peer_req = libc::ifreq {
-            ifr_name: self.peer_iface.name_raw_i8(),
+            ifr_name: self.peer_iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
         */
@@ -523,7 +524,7 @@ impl FethTap {
     /// Indicates whether Address Resolution Protocol (ARP) is enabled on the Tap device.
     pub fn arp(&self) -> io::Result<bool> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -541,12 +542,12 @@ impl FethTap {
     /// Enables or disables Address Resolution Protocol (ARP) on the Tap device.
     pub fn set_arp(&self, do_arp: bool) -> io::Result<()> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
         let mut peer_req = libc::ifreq {
-            ifr_name: self.peer_iface.name_raw_i8(),
+            ifr_name: self.peer_iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -585,7 +586,7 @@ impl FethTap {
     /*
     pub fn debug(&self) -> io::Result<bool> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -602,12 +603,12 @@ impl FethTap {
 
     pub fn set_debug(&self, do_debug: bool) -> io::Result<()> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
         let mut peer_req = libc::ifreq {
-            ifr_name: self.peer_iface.name_raw_i8(),
+            ifr_name: self.peer_iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -647,7 +648,7 @@ impl FethTap {
     /*
     pub fn promiscuous(&self) -> io::Result<bool> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -667,7 +668,7 @@ impl FethTap {
         // attached BPF.
 
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -694,7 +695,7 @@ impl FethTap {
     /*
     pub fn lro(&self) -> io::Result<bool> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_flags: 0,
             },
@@ -713,14 +714,14 @@ impl FethTap {
 
     pub fn set_lro(&self, do_lro: bool) -> io::Result<()> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_flags: 0,
             },
         };
 
         let mut peer_req = libc::ifreq {
-            ifr_name: self.peer_iface.name_raw_i8(),
+            ifr_name: self.peer_iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_flags: 0,
             },
@@ -795,7 +796,7 @@ impl FethTap {
     /*
     pub fn ll_addr(&self) -> io::Result<MacAddr> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
@@ -831,7 +832,7 @@ impl FethTap {
         };
 
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
@@ -881,7 +882,7 @@ impl FethTap {
         };
 
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
@@ -969,7 +970,7 @@ impl FethTap {
         Self::close_fd(self.bpf_fd);
 
         let mut peer_req = libc::ifreq {
-            ifr_name: self.peer_iface.name_raw_i8(),
+            ifr_name: self.peer_iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -979,7 +980,7 @@ impl FethTap {
         };
 
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_i8(),
+            ifr_name: self.iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -1000,7 +1001,7 @@ impl FethTap {
 
     fn destroy_iface(sockfd: RawFd, iface: Interface) {
         let mut req = libc::ifreq {
-            ifr_name: iface.name_raw_i8(),
+            ifr_name: iface.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 

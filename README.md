@@ -219,7 +219,7 @@ at the moment, but they are a planned feature for the near future.
 ## `async` Runtime Support
 
 All `Tun` and `Tap` types implement synchronous blocking/nonblocking `send()` and `recv()` APIs.
-In addition to this, `tappers` will aim to provide first-class support for the following `async`
+In addition to this, `tappers` provides first-class support for the following `async`
 runtimes:
 
 | `async` Runtime | Supported? |

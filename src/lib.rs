@@ -724,7 +724,7 @@ impl Interface {
     #[cfg(not(target_os = "windows"))]
     #[inline]
     fn index_impl(&self) -> io::Result<u32> {
-        match unsafe { libc::if_nametoindex(self.name.as_ptr() as *const i8) } {
+        match unsafe { libc::if_nametoindex(self.name.as_ptr() as *const libc::c_char) } {
             0 => Err(io::Error::last_os_error()),
             i => Ok(i),
         }
@@ -770,10 +770,10 @@ impl Interface {
         self.name
     }
 
-    /// Returns the interface name as an array of `char` bytes (i.e. signed 8-bit integers).
+    /// Returns the interface name as an array of `char` bytes.
     #[cfg(any(doc, not(target_os = "windows")))]
-    pub fn name_raw_i8(&self) -> [i8; Self::MAX_INTERFACE_NAME_LEN + 1] {
-        array::from_fn(|i| self.name[i] as i8)
+    pub fn name_raw_char(&self) -> [libc::c_char; Self::MAX_INTERFACE_NAME_LEN + 1] {
+        array::from_fn(|i| self.name[i] as libc::c_char)
     }
 
     /// Returns the name associated with the given interface in C-string format.
@@ -788,7 +788,7 @@ impl Interface {
     #[cfg(any(doc, not(target_os = "windows")))]
     #[inline]
     pub fn name_cstr(&self) -> &CStr {
-        unsafe { CStr::from_ptr(self.name.as_ptr() as *const i8) }
+        unsafe { CStr::from_ptr(self.name.as_ptr() as *const libc::c_char) }
     }
 
     // An interface may have multiple assigned IP addresses. This is referred to as multihoming (see
@@ -1333,7 +1333,7 @@ impl Interface {
                     };
 
                 let mut req = ifaliasreq {
-                    ifra_name: self.name_raw_i8(),
+                    ifra_name: self.name_raw_char(),
                     #[cfg(not(target_os = "openbsd"))]
                     ifra_addr: addr,
                     #[cfg(target_os = "openbsd")]
@@ -1421,7 +1421,7 @@ impl Interface {
                     };
 
                 let mut req = in6_aliasreq {
-                    ifra_name: self.name_raw_i8(),
+                    ifra_name: self.name_raw_char(),
                     #[cfg(not(target_os = "openbsd"))]
                     ifra_addr: addr,
                     #[cfg(target_os = "openbsd")]
@@ -1619,7 +1619,7 @@ impl Interface {
                 let addr: libc::sockaddr = unsafe { mem::transmute(addr) };
 
                 let mut req = ifreq {
-                    ifr_name: self.name_raw_i8(),
+                    ifr_name: self.name_raw_char(),
                     ifr_ifru: __c_anonymous_ifr_ifru { ifru_addr: addr },
                 };
 
@@ -1655,7 +1655,7 @@ impl Interface {
                 };
 
                 let mut req = in6_ifreq {
-                    ifr_name: self.name_raw_i8(),
+                    ifr_name: self.name_raw_char(),
                     ifr_ifru: __c_anonymous_in6_ifr_ifru { ifru_addr: addr },
                 };
 

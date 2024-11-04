@@ -23,7 +23,8 @@ use std::{io, net::IpAddr};
 
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
-pub(crate) const DEV_NET_TUN: *const i8 = b"/dev/net/tun\0".as_ptr() as *const i8;
+pub(crate) const DEV_NET_TUN: *const libc::c_char =
+    b"/dev/net/tun\0".as_ptr() as *const libc::c_char;
 
 // TODO: include Generic Receive Offset variant of Tun/Tap
 //

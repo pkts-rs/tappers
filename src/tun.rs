@@ -218,7 +218,7 @@ mod tests {
     fn given_name() {
         use std::ffi::CStr;
 
-        let chosen_name = unsafe { CStr::from_ptr(b"utun24\0".as_ptr() as *const i8) };
+        let chosen_name = unsafe { CStr::from_ptr(b"utun24\0".as_ptr() as *const libc::c_char) };
 
         let iface = Interface::from_cstr(chosen_name).unwrap();
         let tun = Tun::new_named(iface).unwrap();

@@ -43,7 +43,7 @@ impl Tun {
         let flags = libc::IFF_TUN_EXCL | libc::IFF_TUN | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
-            ifr_name: [0i8; 16],
+            ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_flags: flags as i16,
             },
@@ -134,7 +134,7 @@ impl Tun {
     /// Retrieves the interface name associated with the TUN device.
     pub fn name(&self) -> io::Result<Interface> {
         let mut req = libc::ifreq {
-            ifr_name: [0i8; 16],
+            ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -175,7 +175,7 @@ impl Tun {
     /// Retrieves the current state of the TUN device (i.e. "up" or "down").
     pub fn state(&self) -> io::Result<DeviceState> {
         let mut req = libc::ifreq {
-            ifr_name: [0i8; 16],
+            ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -196,7 +196,7 @@ impl Tun {
     /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let mut req = libc::ifreq {
-            ifr_name: [0i8; 16],
+            ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 

@@ -800,7 +800,7 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
-                    sa_data: [0i8; 14],
+                    sa_data: [0; 14],
                 }
             },
         };
@@ -828,7 +828,13 @@ impl FethTap {
             sdl_nlen: 0,
             sdl_alen: 6, // This is what the XNU kernel wants, based on source inspection
             sdl_slen: 0,
-            sdl_data: array::from_fn(|i| if i < 6 { addr.addr[i] as i8 } else { 0i8 }),
+            sdl_data: array::from_fn(|i| {
+                if i < 6 {
+                    addr.addr[i] as libc::c_char
+                } else {
+                    0
+                }
+            }),
         };
 
         let mut req = libc::ifreq {
@@ -837,7 +843,7 @@ impl FethTap {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
                     sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
-                    sa_data: [0i8; 14],
+                    sa_data: [0; 14],
                 },
             },
         };
@@ -874,9 +880,9 @@ impl FethTap {
             sdl_slen: 0,
             sdl_data: array::from_fn(|i| {
                 if i < 6 {
-                    multicast_addr.addr[i] as i8
+                    multicast_addr.addr[i] as libc::c_char
                 } else {
-                    0i8
+                    0
                 }
             }),
         };
@@ -887,7 +893,7 @@ impl FethTap {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
                     sa_len: mem::size_of::<libc::sockaddr_in>() as u8,
-                    sa_data: [0i8; 14],
+                    sa_data: [0; 14],
                 },
             },
         };

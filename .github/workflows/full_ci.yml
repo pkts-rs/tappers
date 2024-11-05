@@ -190,45 +190,19 @@ jobs:
           TARGET=${{ matrix.target }} sh ./ci/install-rust.sh
           TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/run.sh
 
-
-# FreeBSD:
-# kldload -n -v if_tuntap
-# NetBSD:
-# /sbin/modload if_tuntap
-
-#   Disabled for now due to lack of `rustup` support:
-#   https://github.com/rust-lang/rustup/issues/2168
-#
-#   If this changes, we may enable OpenBSD CI
-
-#  build_channels_openbsd:
-#    name: Build Channels OpenBSD
-#    runs-on: ubuntu-latest
-#    env:
-#      OS: openbsd
-#    strategy:
-#      fail-fast: true
-#      matrix:
-#        toolchain:
-#          - stable
-#          - 1.70.0
-#    steps:
-#    - uses: actions/checkout@v4
-#    - name: Test in OpenBSD
-#      id: test
-#      uses: vmactions/openbsd-vm@v1
-#      with:
-#        envs: 'OS'
-#        usesh: true
-#        prepare: |
-#          pkg_add curl
-#          pkg_add sudo-1.9.15.5
-#          /sbin/modload if_tuntap
-#          curl https://sh.rustup.rs -sSf | sh -s -- -y
-#        run: |
-#          export PATH="$HOME/.cargo/bin:$PATH"
-#          TARGET=${{ matrix.target }} sh ./ci/install-rust.sh
-#          TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/run.sh
+  build_channels_arm_linux:
+    name: Build Channels ARM (Linux)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: pguyot/arm-runner-action@v2
+      with:
+        image_additional_mb: 4096 # Enlarge raspi image by 4GB
+        commands: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          export PATH="$HOME/.cargo/bin:$PATH"
+          TOOLCHAIN=stable sh ./ci/install-rust.sh
+          TOOLCHAIN=stable OS=linux sh ./ci/run.sh
 
   check_cfg:
     name: "Check #[cfg]s"

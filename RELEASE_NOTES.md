@@ -1,5 +1,9 @@
 # Release History:
 
+* 0.4.2
+  - Fix breaking issues for ARM builds
+  - Add arm-linux-stable to CI
+
 * 0.4.1
   - Revise internals of async `send()`/`recv()` to fix issues polling HANDLEs in Windows
   - Separate `async_io` interfaces into `smol` and `async_std`

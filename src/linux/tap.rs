@@ -20,14 +20,21 @@ use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 use super::DEV_NET_TUN;
 
 // Need to add to libc
-const TUNGETIFF: u64 = 0x800454D2;
 
-const TUNSETDEBUG: u64 = 0x400454C9;
-const TUNSETGROUP: u64 = 0x400454CE;
-const TUNSETLINK: u64 = 0x400454CD;
-const TUNSETIFF: u64 = 0x400454CA;
-const TUNSETOWNER: u64 = 0x400454CC;
-const TUNSETPERSIST: u64 = 0x400454CB;
+#[cfg(not(doc))]
+const TUNGETIFF: libc::Ioctl = 0x800454D2;
+#[cfg(not(doc))]
+const TUNSETDEBUG: libc::Ioctl = 0x400454C9;
+#[cfg(not(doc))]
+const TUNSETGROUP: libc::Ioctl = 0x400454CE;
+#[cfg(not(doc))]
+const TUNSETLINK: libc::Ioctl = 0x400454CD;
+#[cfg(not(doc))]
+const TUNSETIFF: libc::Ioctl = 0x400454CA;
+#[cfg(not(doc))]
+const TUNSETOWNER: libc::Ioctl = 0x400454CC;
+#[cfg(not(doc))]
+const TUNSETPERSIST: libc::Ioctl = 0x400454CB;
 
 /// A TAP interface that includes Linux-specific functionality.
 pub struct Tap {

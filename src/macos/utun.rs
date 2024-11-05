@@ -95,7 +95,12 @@ impl Utun {
         let mut utun_ctrl_iter = UTUN_CONTROL_NAME.iter();
         let mut info = libc::ctl_info {
             ctl_id: 0u32,
-            ctl_name: array::from_fn(|_| utun_ctrl_iter.next().map(|b| *b as i8).unwrap_or(0)),
+            ctl_name: array::from_fn(|_| {
+                utun_ctrl_iter
+                    .next()
+                    .map(|b| *b as libc::c_char)
+                    .unwrap_or(0)
+            }),
         };
 
         if unsafe {

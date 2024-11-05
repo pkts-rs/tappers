@@ -109,7 +109,7 @@ impl Tap {
             let mut name = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
             if fdevname_r(
                 tap_fd,
-                name.as_mut_ptr() as *mut i8,
+                name.as_mut_ptr() as *mut libc::c_char,
                 Interface::MAX_INTERFACE_NAME_LEN as i32,
             )
             .is_null()

@@ -675,7 +675,7 @@ impl Interface {
         }
 
         let mut name = [0u8; Self::MAX_INTERFACE_NAME_LEN + 1];
-        match unsafe { libc::if_indextoname(if_index, name.as_mut_ptr() as *mut i8) } {
+        match unsafe { libc::if_indextoname(if_index, name.as_mut_ptr() as *mut libc::c_char) } {
             ptr if ptr.is_null() => Err(io::Error::last_os_error()),
             _ => Ok(Self {
                 name,

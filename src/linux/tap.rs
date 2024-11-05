@@ -43,7 +43,7 @@ impl Tap {
         let flags = libc::IFF_TAP | libc::IFF_NO_PI | libc::IFF_TUN_EXCL;
 
         let mut req = libc::ifreq {
-            ifr_name: [0i8; 16],
+            ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_flags: flags as i16,
             },
@@ -137,7 +137,7 @@ impl Tap {
     /// Retrieves the interface name associated with the TAP device.
     pub fn name(&self) -> io::Result<Interface> {
         let mut req = libc::ifreq {
-            ifr_name: [0i8; 16],
+            ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -177,7 +177,7 @@ impl Tap {
     /// Retrieves the current state of the TAP device (i.e. "up" or "down").
     pub fn state(&self) -> io::Result<DeviceState> {
         let mut req = libc::ifreq {
-            ifr_name: [0i8; 16],
+            ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
@@ -198,7 +198,7 @@ impl Tap {
     /// Sets the adapter state of the TAP device (e.g. "up" or "down").
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let mut req = libc::ifreq {
-            ifr_name: [0i8; 16],
+            ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 

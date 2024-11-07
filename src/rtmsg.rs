@@ -8,10 +8,125 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+// TODO: this should be named to `pf_route.rs`
+
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::{io, mem};
+use std::{io, mem, ptr};
 
 use crate::libc_extra::*;
+
+const fn ROUNDUP(len: usize) -> usize {
+    if len > 0 {
+        1 + ((len - 1) | (mem::size_of::<u32>() - 1))
+    } else {
+        mem::size_of::<u32>()
+    }
+}
+
+fn v4_to_sockaddr(ipv4: Ipv4Addr) -> libc::sockaddr_in {
+    libc::sockaddr_in {
+        sin_family: libc::AF_INET as libc::sa_family_t,
+        sin_port: 0,
+        sin_addr: libc::in_addr {
+            s_addr: u32::from(ipv4).to_be(),
+        },
+        sin_zero: [0u8; 8],
+    }
+}
+
+fn v6_to_sockaddr(ipv6: Ipv6Addr) -> libc::sockaddr_in6 {
+    libc::sockaddr_in6 {
+        sin6_family: libc::AF_INET6 as libc::sa_family_t,
+        sin6_port: 0,
+        sin6_flowinfo: 0,
+        sin6_addr: u128::from(ipv6).to_be_bytes(),
+    }
+}
+
+#[cfg(target_os = "dragonfly")]
+fn dl_to_sockaddr(link: LinkAddr) -> io::Result<sockaddr_dl> {
+    let mac_bytes: [u8; 6] = link.addr.into();
+
+    sockaddr_dl {
+        sdl_len: mem::size_of::<sockaddr_dl>() as libc::c_uchar,
+        sdl_family: AF_LINK as libc::c_uchar,
+        sdl_index: link.iface.map(|i| i.index()?).unwrap_or(0) as libc::c_ushort,
+        sdl_type: IFT_ETHER,
+        sdl_nlen: 0,
+        sdl_alen: 6,
+        sdl_slen: 0,
+        sdl_data: array::from_fn(|i| if i < 6 { mac_bytes[i] } else { 0 }), 
+        sdl_rcf: 0,
+        sdl_route: [0; 16],
+    }
+}
+
+#[cfg(target_os = "freebsd")]
+fn dl_to_sockaddr(link: LinkAddr) -> io::Result<sockaddr_dl> {
+    let mac_bytes: [u8; 6] = link.addr.into();
+
+    sockaddr_dl {
+        sdl_len: mem::size_of::<sockaddr_dl>() as libc::c_uchar,
+        sdl_family: AF_LINK as libc::c_uchar,
+        sdl_index: link.iface.map(|i| i.index()?).unwrap_or(0) as libc::c_ushort,
+        sdl_type: IFT_ETHER,
+        sdl_nlen: 0,
+        sdl_alen: 6,
+        sdl_slen: 0,
+        sdl_data: array::from_fn(|i| if i < 6 { mac_bytes[i] } else { 0 }), 
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn dl_to_sockaddr(link: LinkAddr) -> io::Result<sockaddr_dl> {
+    let mac_bytes: [u8; 6] = link.addr.into();
+
+    sockaddr_dl {
+        sdl_len: mem::size_of::<sockaddr_dl>() as libc::c_uchar,
+        sdl_family: AF_LINK as libc::c_uchar,
+        sdl_index: link.iface.map(|i| i.index()?).unwrap_or(0) as libc::c_ushort,
+        sdl_type: IFT_ETHER,
+        sdl_nlen: 0,
+        sdl_alen: 6,
+        sdl_slen: 0,
+        sdl_data: array::from_fn(|i| if i < 6 { mac_bytes[i] } else { 0 }), 
+    }
+}
+
+
+#[cfg(target_os = "netbsd")]
+fn dl_to_sockaddr(link: LinkAddr) -> io::Result<sockaddr_dl> {
+    let mac_bytes: [u8; 6] = link.addr.into();
+
+    sockaddr_dl {
+        sdl_len: mem::size_of::<sockaddr_dl>() as libc::c_uchar,
+        sdl_family: AF_LINK as libc::c_uchar,
+        sdl_index: link.iface.map(|i| i.index()?).unwrap_or(0) as libc::c_ushort,
+        sdl_addr: dl_addr {
+            dl_type: IFT_ETHER,
+            dl_nlen: 0,
+            dl_alen: 6,
+            dl_slen: 0,
+            dl_data: array::from_fn(|i| if i < 6 { mac_bytes[i] } else { 0 }), 
+        },
+    }
+}
+
+#[cfg(target_os = "openbsd")]
+fn dl_to_sockaddr(link: LinkAddr) -> io::Result<sockaddr_dl> {
+    let mac_bytes: [u8; 6] = link.addr.into();
+
+    sockaddr_dl {
+        sdl_len: mem::size_of::<sockaddr_dl>() as libc::c_uchar,
+        sdl_family: AF_LINK as libc::c_uchar,
+        sdl_index: link.iface.map(|i| i.index()?).unwrap_or(0) as libc::c_ushort,
+        sdl_type: IFT_ETHER,
+        sdl_nlen: 0,
+        sdl_alen: 6,
+        sdl_slen: 0,
+        sdl_data: array::from_fn(|i| if i < 6 { mac_bytes[i] } else { 0 }), 
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct SysctlParseError {
@@ -35,6 +150,106 @@ impl From<SysctlParseError> for io::Error {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct LinkAddr {
+    pub addr: MacAddr,
+    pub iface: Option<Interface>,
+}
+
+#[derive(Clone)]
+pub enum Gateway {
+    Ip(IpAddr),
+    LinkAddr(LinkAddr),
+    Iface(Interface), // `route` would use `getifaddrs` to convert Interface to sockaddr_dl...
+}
+
+#[derive(Clone)]
+pub enum Addr {
+    Ip(IpAddr),
+    Link(LinkAddr),
+}
+
+
+// destination/netmask are together
+// default destination is 0.0.0.0/0
+// -interface specified if gateway not needed
+// gateway addr otherwise
+// "if the interface is point-to-point the name of the interface itself may be given, in which case the route remains valid even if addresses change"
+// -ifscope scopes src/dst to a specific interface
+// -link indicates link-level addresses, numerically specified
+//
+
+// Routes have associated flags which influence operation of the protocols
+// when sending to destinations matched by the routes.  These flags may be
+// set (or sometimes cleared) by indicating the following corresponding mod-
+// ifiers:
+
+// -cloning   RTF_CLONING    - generates a new route on use
+// -xresolve  RTF_XRESOLVE   - emit mesg on use (for external lookup)
+// -iface    ~RTF_GATEWAY    - destination is directly reachable
+// -static    RTF_STATIC     - manually added route
+// -nostatic ~RTF_STATIC     - pretend route added by kernel or daemon
+// -reject    RTF_REJECT     - emit an ICMP unreachable when matched
+// -blackhole RTF_BLACKHOLE  - silently discard pkts (during updates)
+// -proto1    RTF_PROTO1     - set protocol specific routing flag #1
+// -proto2    RTF_PROTO2     - set protocol specific routing flag #2
+// -llinfo    RTF_LLINFO     - validly translates proto addr to link addr
+
+// -ifp/ifa used to determine the interface of the destination/gateway pair
+// different from -interface
+pub struct RtMsgV4 {
+    header: rt_msghdr,
+    destination: Option<Addr>,
+    gateway: Option<Gateway>, // Can be an Interface as well...
+    netmask: Option<Netmask>,
+    genmask: Option<Netmask>,
+    if_name: Option<Interface>,
+    if_addr: Option<Addr>, // Is this actually MacAddr || IpAddr?
+//    author: Option<Ipv4Addr>,
+//    broadcast: Option<Ipv4Addr>,
+}
+
+impl RtMsg {
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut v = vec![0; mem::size_of::<rt_msghdr>()];
+        ptr::copy_nonoverlapping(ptr::addr_of!(self.header), ptr::addr_of_mut!(v), 1);
+
+        if let Some(dst) = self.destination.as_ref() {
+            match dst {
+                Addr::Ip(IpAddr::V4(ipv4)) => Self::serialize_ipv4(&mut v, ipv4),
+                Addr::Ip(IpAddr::V6(ipv6)) => Self::serialize_ipv6(&mut v, ipv6),
+                Addr::Link(link) => Self::serialize_link(&mut v, link),
+            }
+        }
+
+
+    }
+
+    fn serialize_ipv4(v: &mut Vec<u8>, ipv4: Ipv4Addr) {
+        let sa = v4_to_sockaddr(ipv4);
+        let sa_buf: [u8; mem::size_of::<libc::sockaddr_in>()] = unsafe { mem::transmute(sa) };
+        v.extend(sa_buf);
+        const PADDING: usize = ROUNDUP(mem::size_of::<libc::sockaddr_in>()) - mem::size_of::<libc::sockaddr_in>();
+        v.extend([0; PADDING]);
+    }
+
+    fn serialize_ipv6(v: &mut Vec<u8>, ipv6: Ipv6Addr) {
+        let sa = v6_to_sockaddr(ipv6);
+        let sa_buf: [u8; mem::size_of::<libc::sockaddr_in6>()] = unsafe { mem::transmute(sa) };
+        v.extend(sa_buf);
+        const PADDING: usize = ROUNDUP(mem::size_of::<libc::sockaddr_in6>()) - mem::size_of::<libc::sockaddr_in6>();
+        v.extend([0; PADDING]);
+    }
+
+    fn serialize_link(v: &mut Vec<u8>, link: LinkAddr) {
+        let sa = dl_to_sockaddr(link);
+        let sa_buf: [u8; mem::size_of::<sockaddr_dl>()] = unsafe { mem::transmute(sa) };
+        v.extend(sa_buf);
+        const PADDING: usize = ROUNDUP(mem::size_of::<sockaddr_dl>()) - mem::size_of::<sockaddr_dl>();
+        v.extend([0; PADDING]);
+    }
+}
+
 pub struct IfList<'a> {
     data: &'a [u8],
 }
@@ -46,7 +261,7 @@ impl<'a> IfList<'a> {
 }
 
 impl<'a> Iterator for IfList<'a> {
-    type Item = Result<SysctlMessage<'a>, SysctlParseError>;
+    type Item = Result<RtMsgRef<'a>, SysctlParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.data.is_empty() {
@@ -92,30 +307,30 @@ impl<'a> Iterator for IfList<'a> {
                     addr_data = rem_data;
                 }
 
-                Some(Ok(SysctlMessage::NewAddress(SysctlNewAddress {
+                Some(Ok(RtMsgRef::NewAddress(NewAddressRef {
                     header: msghdr,
                     addr_data,
                 })))
             }
-            ty => Some(Ok(SysctlMessage::Unknown(ty))),
+            ty => Some(Ok(RtMsgRef::Unknown(ty))),
         }
     }
 }
 
 #[non_exhaustive]
-pub enum SysctlMessage<'a> {
+pub enum RtMsgRef<'a> {
     //    InterfaceInfo,
-    NewAddress(SysctlNewAddress<'a>),
+    NewAddress(NewAddressRef<'a>),
     //    Announce,
     Unknown(i32),
 }
 
-pub struct SysctlNewAddress<'a> {
+pub struct NewAddressRef<'a> {
     header: ifa_msghdr,
     addr_data: &'a [u8],
 }
 
-impl<'a> SysctlNewAddress<'a> {
+impl<'a> NewAddressRef<'a> {
     #[inline]
     pub fn index(&self) -> libc::c_ushort {
         self.header.ifam_index
@@ -294,13 +509,13 @@ mod tests_macos {
         let if_list = IfList::new(sysctl_out.as_slice());
         for msg in if_list {
             match msg.unwrap() {
-                SysctlMessage::NewAddress(new_addr) => {
+                RtMsgRef::NewAddress(new_addr) => {
                     for addr in new_addr.addrs() {
                         assert_eq!(addr.unwrap(), expected[idx]);
                         idx += 1;
                     }
                 }
-                SysctlMessage::Unknown(_) => (),
+                RtMsgRef::Unknown(_) => (),
             }
         }
 

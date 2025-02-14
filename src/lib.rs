@@ -546,8 +546,7 @@ pub struct Interface {
     #[cfg(not(target_os = "windows"))]
     name: [u8; Self::MAX_INTERFACE_NAME_LEN + 1],
     #[cfg(target_os = "windows")]
-    name: [u16; Self::MAX_INTERFACE_NAME_LEN + 1],
-    is_catchall: bool,
+    name: [u8; Self::MAX_INTERFACE_NAME_LEN + 1],
 }
 
 impl Interface {
@@ -559,21 +558,6 @@ impl Interface {
     /// storing the interface name in an `Interface` instance, so the size of an `Interface` is
     /// likewise platform-dependent.
     pub const MAX_INTERFACE_NAME_LEN: usize = INTERNAL_MAX_INTERFACE_NAME_LEN;
-
-    /// A special catch-all interface identifier that specifies all operational interfaces.
-    ///
-    /// Note that this interface is not valid for most contexts--its main purpose is enabling raw
-    /// sockets or similar sniffing devices to listen in on traffic from all interfaces at once.
-    #[cfg(not(target_os = "windows"))]
-    pub fn any() -> io::Result<Self> {
-        let name = [0; Self::MAX_INTERFACE_NAME_LEN + 1];
-
-        // Leave the interface name blank since this is the catch-all identifier
-        Ok(Self {
-            name,
-            is_catchall: true,
-        })
-    }
 
     /// Constructs an `Interface` from the given interface name.
     ///
@@ -607,11 +591,8 @@ impl Interface {
 
     #[cfg(not(target_os = "windows"))]
     #[allow(unused)]
-    pub(crate) unsafe fn from_raw(arr: [u8; Self::MAX_INTERFACE_NAME_LEN + 1]) -> Self {
-        Self {
-            name: arr,
-            is_catchall: false,
-        }
+    pub(crate) unsafe fn from_raw(name: [u8; Self::MAX_INTERFACE_NAME_LEN + 1]) -> Self {
+        Self { name }
     }
 
     #[cfg(target_os = "windows")]
@@ -648,10 +629,7 @@ impl Interface {
         let mut name_iter = if_name.iter();
         let name = array::from_fn(|_| name_iter.next().cloned().unwrap_or(0));
 
-        Ok(Interface {
-            name,
-            is_catchall: false,
-        })
+        Ok(Interface { name })
     }
 
     /*
@@ -669,18 +647,10 @@ impl Interface {
     #[inline]
     #[cfg(not(target_os = "windows"))]
     pub fn from_index(if_index: u32) -> io::Result<Self> {
-        // TODO: do Unix systems other than Linux actually consider '0' to be a catch-all?
-        if if_index == 0 {
-            return Self::any();
-        }
-
         let mut name = [0u8; Self::MAX_INTERFACE_NAME_LEN + 1];
         match unsafe { libc::if_indextoname(if_index, name.as_mut_ptr() as *mut libc::c_char) } {
             ptr if ptr.is_null() => Err(io::Error::last_os_error()),
-            _ => Ok(Self {
-                name,
-                is_catchall: false,
-            }),
+            _ => Ok(Self { name }),
         }
     }
 

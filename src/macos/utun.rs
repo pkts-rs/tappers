@@ -260,9 +260,9 @@ impl Utun {
             ));
         }
 
-        let family_prefix = match buf[0] & 0x0f {
-            0x04 => [0u8, 0, 0, 2],
-            0x06 => [0u8, 0, 0, 10],
+        let family_prefix = match buf[0] & 0xf0 {
+            0x40 => [0u8, 0, 0, 2],
+            0x60 => [0u8, 0, 0, 10],
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,

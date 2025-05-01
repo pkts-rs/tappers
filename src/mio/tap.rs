@@ -130,7 +130,7 @@ impl AsyncTap {
     /// Receives a packet over the TAP device.
     #[inline]
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.io.recv(buf)
+        self.tap.recv(buf)
     }
 }
 

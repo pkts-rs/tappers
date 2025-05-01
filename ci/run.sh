@@ -49,7 +49,8 @@ case "${OS}" in
 
         cargo test --all-targets --all-features
 
-        # doc tests must have all features enabled to run
+        cargo test --doc --features ""
+
         cargo test --doc --all-features
         ;;
     *)
@@ -67,7 +68,8 @@ case "${OS}" in
 
         cargo test --all-targets --all-features
 
-        # doc tests must have all features enabled to run
+        cargo test --doc --features ""
+
         cargo test --doc --all-features
         ;;
 esac

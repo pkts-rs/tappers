@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#![allow(rustdoc::broken_intra_doc_links)]
+
 //! Tappers is a networking library that provides cross-platform support for TUN, TAP and virtual
 //! Ethernet (vETH) interfaces in Rust.
 //!
@@ -133,20 +135,19 @@
 // Show required OS/features on docs.rs.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(any(doc, feature = "async-std"))]
+#[cfg(feature = "async-std")]
 pub mod async_std;
-#[cfg(any(doc, target_os = "linux"))]
+#[cfg(target_os = "linux")]
 pub mod linux;
-#[cfg(any(doc, target_os = "macos"))]
+#[cfg(target_os = "macos")]
 pub mod macos;
-#[cfg(any(doc, all(feature = "mio", not(target_os = "windows"))))]
+#[cfg(all(feature = "mio", not(target_os = "windows")))]
 pub mod mio;
-#[cfg(any(doc, feature = "smol"))]
+#[cfg(feature = "smol")]
 pub mod smol;
-#[cfg(any(doc, feature = "tokio"))]
+#[cfg(feature = "tokio")]
 pub mod tokio;
 #[cfg(any(
-    doc,
     target_os = "dragonfly",
     target_os = "freebsd",
 //    target_os = "illumos",
@@ -155,10 +156,10 @@ pub mod tokio;
 //    target_os = "solaris"
 ))]
 pub mod unix;
-#[cfg(any(doc, all(target_os = "windows", feature = "wintun")))]
+#[cfg(all(target_os = "windows", feature = "wintun"))]
 pub mod wintun;
 
-#[cfg(any(doc, not(target_os = "windows")))]
+#[cfg(not(target_os = "windows"))]
 mod libc_extra;
 #[cfg(target_os = "linux")]
 mod rtnetlink;
@@ -182,7 +183,7 @@ pub use tun::Tun;
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 use std::cmp;
-#[cfg(any(doc, not(target_os = "windows")))]
+#[cfg(not(target_os = "windows"))]
 use std::ffi::CStr;
 use std::ffi::{OsStr, OsString};
 use std::fmt::{Debug, Display};
@@ -191,7 +192,7 @@ use std::mem;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::RawFd;
-#[cfg(all(doc, target_os = "windows"))]
+#[cfg(target_os = "windows")]
 pub type RawFd = i32;
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::ffi::OsStrExt;
@@ -546,8 +547,7 @@ pub struct Interface {
     #[cfg(not(target_os = "windows"))]
     name: [u8; Self::MAX_INTERFACE_NAME_LEN + 1],
     #[cfg(target_os = "windows")]
-    name: [u16; Self::MAX_INTERFACE_NAME_LEN + 1],
-    is_catchall: bool,
+    name: [u8; Self::MAX_INTERFACE_NAME_LEN + 1],
 }
 
 impl Interface {
@@ -560,26 +560,11 @@ impl Interface {
     /// likewise platform-dependent.
     pub const MAX_INTERFACE_NAME_LEN: usize = INTERNAL_MAX_INTERFACE_NAME_LEN;
 
-    /// A special catch-all interface identifier that specifies all operational interfaces.
-    ///
-    /// Note that this interface is not valid for most contexts--its main purpose is enabling raw
-    /// sockets or similar sniffing devices to listen in on traffic from all interfaces at once.
-    #[cfg(not(target_os = "windows"))]
-    pub fn any() -> io::Result<Self> {
-        let name = [0; Self::MAX_INTERFACE_NAME_LEN + 1];
-
-        // Leave the interface name blank since this is the catch-all identifier
-        Ok(Self {
-            name,
-            is_catchall: true,
-        })
-    }
-
     /// Constructs an `Interface` from the given interface name.
     ///
     /// `if_name` must not consist of more than
-    /// [`MAX_INTERFACE_NAME_LEN`](Self::MAX_INTERFACE_NAME_LEN) bytes of UTF-8 (for *nix
-    /// platforms) or, and must not contain any null characters.
+    /// [`MAX_INTERFACE_NAME_LEN`](Self::MAX_INTERFACE_NAME_LEN) bytes of UTF-8 and must not contain
+    /// any null characters.
     ///
     /// # Errors
     ///
@@ -587,7 +572,13 @@ impl Interface {
     /// number of bytes or contains a null character.
     #[inline]
     pub fn new(if_name: impl AsRef<OsStr>) -> io::Result<Self> {
-        Self::new_inner(if_name)
+        let bytes = if_name.as_ref().as_encoded_bytes();
+        if bytes.len() > Self::MAX_INTERFACE_NAME_LEN {
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+
+        let name = array::from_fn(|i| if i < bytes.len() { bytes[i] } else { 0 });
+        Ok(Interface { name })
     }
 
     /// Constructs an `Interface` from the given C string.
@@ -599,43 +590,12 @@ impl Interface {
     ///
     /// Returns [InvalidData](io::ErrorKind::InvalidData) if `if_name` is longer than the maximum
     /// number of bytes.
-    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn from_cstr(if_name: &CStr) -> io::Result<Self> {
         Self::new_raw(if_name.to_bytes())
     }
 
-    #[cfg(not(target_os = "windows"))]
-    #[allow(unused)]
-    pub(crate) unsafe fn from_raw(arr: [u8; Self::MAX_INTERFACE_NAME_LEN + 1]) -> Self {
-        Self {
-            name: arr,
-            is_catchall: false,
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    #[inline]
-    fn new_inner(if_name: impl AsRef<OsStr>) -> io::Result<Self> {
-        let mut utf16 = if_name.as_ref().encode_wide();
-        let name = array::from_fn(|_| utf16.next().unwrap_or(0));
-
-        let interface = Interface {
-            name,
-            is_catchall: false,
-        };
-
-        Ok(interface)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    #[inline]
-    fn new_inner(if_name: impl AsRef<OsStr>) -> io::Result<Self> {
-        Self::new_raw(if_name.as_ref().as_bytes())
-    }
-
     // TODO: this should be `from_slice`
-    #[cfg(not(target_os = "windows"))]
     #[inline]
     fn new_raw(if_name: &[u8]) -> io::Result<Self> {
         if if_name.len() > Self::MAX_INTERFACE_NAME_LEN || if_name.contains(&0x00) {
@@ -648,10 +608,7 @@ impl Interface {
         let mut name_iter = if_name.iter();
         let name = array::from_fn(|_| name_iter.next().cloned().unwrap_or(0));
 
-        Ok(Interface {
-            name,
-            is_catchall: false,
-        })
+        Ok(Interface { name })
     }
 
     /*
@@ -669,18 +626,10 @@ impl Interface {
     #[inline]
     #[cfg(not(target_os = "windows"))]
     pub fn from_index(if_index: u32) -> io::Result<Self> {
-        // TODO: do Unix systems other than Linux actually consider '0' to be a catch-all?
-        if if_index == 0 {
-            return Self::any();
-        }
-
         let mut name = [0u8; Self::MAX_INTERFACE_NAME_LEN + 1];
         match unsafe { libc::if_indextoname(if_index, name.as_mut_ptr() as *mut libc::c_char) } {
             ptr if ptr.is_null() => Err(io::Error::last_os_error()),
-            _ => Ok(Self {
-                name,
-                is_catchall: false,
-            }),
+            _ => Ok(Self { name }),
         }
     }
 
@@ -771,7 +720,7 @@ impl Interface {
     }
 
     /// Returns the interface name as an array of `char` bytes.
-    #[cfg(any(doc, not(target_os = "windows")))]
+    #[cfg(not(target_os = "windows"))]
     pub fn name_raw_char(&self) -> [libc::c_char; Self::MAX_INTERFACE_NAME_LEN + 1] {
         array::from_fn(|i| self.name[i] as libc::c_char)
     }
@@ -785,7 +734,7 @@ impl Interface {
     ///
     /// Otherwise, a returned error indicates that [`Interface`] does not correspond to a valid
     /// interface.
-    #[cfg(any(doc, not(target_os = "windows")))]
+    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub fn name_cstr(&self) -> &CStr {
         unsafe { CStr::from_ptr(self.name.as_ptr() as *const libc::c_char) }
@@ -794,7 +743,7 @@ impl Interface {
     // An interface may have multiple assigned IP addresses. This is referred to as multihoming (see
     // https://en.wikipedia.org/wiki/Multihoming).
 
-    #[cfg(any(doc, not(target_os = "windows")))]
+    #[cfg(not(target_os = "windows"))]
     #[inline]
     pub(crate) fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
         self.addrs_impl() // GetAdaptersAddresses for Windows

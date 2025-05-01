@@ -70,7 +70,6 @@ impl AsyncTun {
     #[cfg(target_os = "windows")]
     fn new_impl() -> io::Result<Self> {
         let mut tun = Tun::new()?;
-        tun.set_nonblocking(true)?;
 
         Ok(Self {
             tun: TunWrapper(Arc::new(tun)),

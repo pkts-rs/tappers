@@ -140,7 +140,7 @@ impl AsyncTun {
     /// Receives a packet over the TUN device.
     #[inline]
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.io.recv(buf)
+        self.tun.recv(buf)
     }
 }
 

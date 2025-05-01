@@ -169,7 +169,8 @@ impl AsyncTap {
 
             match guard.try_io(|inner| inner.get_ref().send(buf)) {
                 Ok(result) => return result,
-                Err(_would_block) => continue,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
             }
         }
     }
@@ -193,7 +194,8 @@ impl AsyncTap {
 
             match guard.try_io(|inner| inner.get_ref().recv(buf)) {
                 Ok(result) => return result,
-                Err(_would_block) => continue,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
             }
         }
     }

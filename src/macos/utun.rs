@@ -175,7 +175,6 @@ impl Utun {
         } {
             0 => Ok(Interface {
                 name: name_buf,
-                is_catchall: false,
             }),
             _ => Err(io::Error::last_os_error()),
         }

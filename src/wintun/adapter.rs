@@ -48,8 +48,8 @@ impl TunAdapter {
 
         let tunnel_type = "Tappers";
 
-        let name_utf16: Vec<u16> = if_name.name().encode_wide().collect();
-        let type_utf16: Vec<u16> = tunnel_type.encode_utf16().collect();
+        let name_utf16: Vec<u16> = if_name.name().encode_wide().chain(&[0]).collect();
+        let type_utf16: Vec<u16> = tunnel_type.encode_utf16().chain(&[0]).collect();
         let guid = Self::generate_guid(if_name, tunnel_type);
 
         let adapter = wintun.create_adapter(&name_utf16, &type_utf16, guid)?;

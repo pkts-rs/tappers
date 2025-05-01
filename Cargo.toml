@@ -2,8 +2,8 @@
 name = "tappers"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 description = "Cross-platform TUN, TAP and vETH interfaces"
-# 1.66 - `std::os::fd` stabilized
-rust-version = "1.70" 
+# 1.74 - `OsStr::as_encoded_bytes` stabilized
+rust-version = "1.74" 
 version = "0.4.2"
 license = "MIT OR Apache-2.0"
 edition = "2021"

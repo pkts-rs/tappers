@@ -71,7 +71,7 @@ impl Tap {
         Ok(Self { fd })
     }
 
-    /// Opens or creates a TTAP device of the given name.
+    /// Opens or creates a TAP device of the given name.
     #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
         let flags = libc::IFF_TAP | libc::IFF_NO_PI | libc::IFF_TUN_EXCL;
@@ -97,7 +97,7 @@ impl Tap {
         Ok(Self { fd })
     }
 
-    /// Creates a new TTAP device, failing if a device of the given name already exists.
+    /// Creates a new TAP device, failing if a device of the given name already exists.
     pub fn create_named(if_name: Interface) -> io::Result<Self> {
         let flags = libc::IFF_TAP | libc::IFF_NO_PI | libc::IFF_TUN_EXCL;
 

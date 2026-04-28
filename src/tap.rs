@@ -41,7 +41,7 @@ impl Tap {
     // Note: Wintun TOCTOU? Only if other interface not created with Wintun but not `tappers`
     //
 
-    /// Creates a new, unique TUN device.
+    /// Creates a new, unique TAP device.
     #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Self {
@@ -49,7 +49,7 @@ impl Tap {
         })
     }
 
-    /// Opens or creates a TUN device of the given name.
+    /// Opens or creates a TAP device of the given name.
     #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
         Ok(Self {
@@ -57,7 +57,7 @@ impl Tap {
         })
     }
 
-    /// Retrieves the interface name of the TUN device.
+    /// Retrieves the interface name of the TAP device.
     #[inline]
     pub fn name(&self) -> io::Result<Interface> {
         self.inner.name()

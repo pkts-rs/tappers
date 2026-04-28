@@ -74,7 +74,7 @@ impl Tap {
     /// Opens or creates a TAP device of the given name.
     #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        let flags = libc::IFF_TAP | libc::IFF_NO_PI | libc::IFF_TUN_EXCL;
+        let flags = libc::IFF_TAP | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_char(),

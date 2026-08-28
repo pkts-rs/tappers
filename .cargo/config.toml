@@ -9,3 +9,7 @@ runner = 'sudo -E'
 # TUN/TAP interfaces require admin privileges to test
 [target.'cfg(windows)']
 runner = "powershell -Command Start-Process -Verb runAs -FilePath"
+
+[resolver]
+incompatible-rust-versions = "fallback"
+

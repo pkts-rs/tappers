@@ -5,6 +5,7 @@ on:
     branches: [ "master" ]
   merge_group:
   pull_request:
+    branches: [ "master" ]
     types: [opened, synchronize, reopened]
 
 jobs:
@@ -29,7 +30,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.70.0
+          - 1.85.0
     steps:
       - uses: actions/checkout@v4
       - name: Setup Rust toolchain
@@ -47,7 +48,7 @@ jobs:
       matrix:
         target:
           - { toolchain: stable, os: macos-14 }
-          - { toolchain: 1.70.0, os: macos-14 }
+          - { toolchain: 1.85.0, os: macos-14 }
     runs-on: ${{ matrix.target.os }}
     steps:
       - uses: actions/checkout@v4
@@ -66,7 +67,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.70.0
+          - 1.85.0
         target:
           - x86_64-pc-windows-msvc
     steps:
@@ -94,14 +95,13 @@ jobs:
       id: dragonflybsd-ci
       uses: vmactions/dragonflybsd-vm@v1
       with:
-        release: "6.4.0"
+        release: "6.4.2"
         envs: 'OS'
         usesh: true
         # DragonFly BSD does not have TAP interfaces by default; use kldload if_tap
         prepare: |
-          pkg install -y sudo
-          pkg install -y rust
-          pkg upgrade -y
+          pkg update -f
+          pkg install -y sudo rust
           kldload if_tap
         run: |
           TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/run.sh
@@ -115,20 +115,22 @@ jobs:
       fail-fast: true
       matrix:
         toolchain:
-          - stable # Note: not actually stable, just current rustc version for OpenBSD 7.5
+          - stable # Note: not actually stable, just current rustc version for OpenBSD 7.7
     steps:
     - uses: actions/checkout@v4
     - name: Test in OpenBSD
       id: openbsd-ci
       uses: vmactions/openbsd-vm@v1
       with:
-        release: "7.5"
+        release: "7.7"
         envs: 'OS'
         usesh: true
         prepare: |
-          pkg_add curl
-          pkg_add sudo-1.9.15.5
-          pkg_add rust
+          pkg_add sudo-- rust
+          echo 'Defaults env_keep += "PATH HOME CARGO_HOME RUSTUP_HOME"' >> /etc/sudoers
+          echo 'Defaults secure_path = "/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin"' >> /etc/sudoers
+          echo '%wheel ALL=(ALL:ALL) NOPASSWD: SETENV: ALL' >> /etc/sudoers
+          echo 'root ALL=(ALL:ALL) NOPASSWD: SETENV: ALL' >> /etc/sudoers
         run: |
           TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/run.sh
 
@@ -142,7 +144,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.70.0
+          - 1.85.0
     steps:
     - uses: actions/checkout@v4
     - name: Test in FreeBSD
@@ -171,7 +173,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.70.0
+          - 1.85.0
     steps:
     - uses: actions/checkout@v4
     - name: Test in NetBSD
@@ -192,17 +194,15 @@ jobs:
 
   build_channels_arm_linux:
     name: Build Channels ARM (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
+    env:
+      OS: linux
     steps:
-    - uses: actions/checkout@v2
-    - uses: pguyot/arm-runner-action@v2
-      with:
-        image_additional_mb: 4096 # Enlarge raspi image by 4GB
-        commands: |
-          curl https://sh.rustup.rs -sSf | sh -s -- -y
-          export PATH="$HOME/.cargo/bin:$PATH"
-          TOOLCHAIN=stable sh ./ci/install-rust.sh
-          TOOLCHAIN=stable OS=linux sh ./ci/run.sh
+    - uses: actions/checkout@v4
+    - name: Setup Rust toolchain
+      run: TOOLCHAIN=stable sh ./ci/install-rust.sh
+    - name: Execute run.sh
+      run: TOOLCHAIN=stable sh ./ci/run.sh
 
   check_cfg:
     name: "Check #[cfg]s"

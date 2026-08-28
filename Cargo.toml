@@ -3,7 +3,7 @@ name = "tappers"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 description = "Cross-platform TUN, TAP and vETH interfaces"
 # 1.66 - `std::os::fd` stabilized
-rust-version = "1.70" 
+rust-version = "1.85" 
 version = "0.4.2"
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -14,6 +14,10 @@ categories = ["network-programming"]
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[patch.crates-io]
+rustix = { git = "https://github.com/bytecodealliance/rustix", branch = "main" }
+rustix_0_38 = { package = "rustix", git = "https://github.com/nathaniel-bennett/rustix.git", branch = "0.38" }
 
 [features]
 default = []
@@ -37,6 +41,6 @@ windows-sys = { version = "0.59", features = ["Win32", "Win32_NetworkManagement"
 once_cell = { version = "1.19" }
 mio = { version = "0.8.11", features = ["net"], optional = true }
 tokio = { version = "1.38.1", features = ["net", "rt", "time"], optional = true }
-async-io = { version = "2.3.4", optional = true }
+async-io = { version = "2.3.0", optional = true }
 smol = { version = "2.0.2", optional = true }
 async-std = { version = "1.13.0", optional = true }

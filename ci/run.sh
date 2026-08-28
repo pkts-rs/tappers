@@ -15,6 +15,7 @@ echo "Testing Rust ${RUST} on ${OS}"
 case "${OS}" in
     openbsd*)
         # OpenBSD does not have rustup support
+	export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
         ;;
     dragonfly*)
         # DragonFlyBSD does not have rustup support
@@ -37,17 +38,17 @@ esac
 
 case "${OS}" in
     windows*)
-        cargo test --all-targets
+        cargo test --all-targets -- --nocapture
 
-        cargo test --all-targets --features wintun
+        cargo test --all-targets --features wintun -- --nocapture
 
-        cargo test --all-targets --features wintun-runtime
+        cargo test --all-targets --features wintun-runtime -- --nocapture
 
-        cargo test --all-targets --features tapwin6
+        cargo test --all-targets --features tapwin6 -- --nocapture
 
-        cargo test --all-targets --features tapwin6-runtime
+        cargo test --all-targets --features tapwin6-runtime -- --nocapture
 
-        cargo test --all-targets --all-features
+        cargo test --all-targets --all-features -- --nocapture
 
         # doc tests must have all features enabled to run
         cargo test --doc --all-features
@@ -55,17 +56,17 @@ case "${OS}" in
     *)
         # No extra features in any platform other than windows
 
-        cargo test --all-targets
+        cargo test --all-targets -- --nocapture
 
-        cargo test --all-targets --features async-std
+        cargo test --all-targets --features async-std -- --nocapture
 
-        cargo test --all-targets --features mio
+        cargo test --all-targets --features mio -- --nocapture
 
-        cargo test --all-targets --features smol
+        cargo test --all-targets --features smol -- --nocapture
 
-        cargo test --all-targets --features tokio
+        cargo test --all-targets --features tokio -- --nocapture
 
-        cargo test --all-targets --all-features
+        cargo test --all-targets --all-features -- --nocapture
 
         # doc tests must have all features enabled to run
         cargo test --doc --all-features

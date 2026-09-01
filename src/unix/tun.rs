@@ -414,7 +414,7 @@ impl Tun {
     #[cfg(any(target_os = "netbsd"))]
     pub fn name_impl(&self) -> io::Result<Interface> {
         let mut req = ifreq {
-            ifr_name: [0i8; _],
+            ifr_name: [0i8; Interface::MAX_INTERFACE_NAME_LEN + 1],
             ifr_ifru: __c_anonymous_ifr_ifru {
                 ifru_data: ptr::null_mut(),
             },

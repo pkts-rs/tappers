@@ -11,8 +11,7 @@
 use std::fs::{File, OpenOptions};
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
-use std::os::fd::{FromRawFd, IntoRawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd};
 use std::path::PathBuf;
 use std::{array, io, ptr};
 
@@ -52,9 +51,9 @@ impl Tun {
         }
 
         let if_name = Interface::new("tun").unwrap();
-        let mut req = libc::ifreq {
+        let mut req = ifreq {
             ifr_name: if_name.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+            ifr_ifru: __c_anonymous_ifr_ifru {
                 ifru_data: ptr::null_mut(),
             },
         };
@@ -98,9 +97,9 @@ impl Tun {
             return Err(io::Error::last_os_error());
         }
 
-        let mut req = libc::ifreq {
+        let mut req = ifreq {
             ifr_name: if_name.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+            ifr_ifru: __c_anonymous_ifr_ifru {
                 ifru_data: ptr::null_mut(),
             },
         };
@@ -150,9 +149,9 @@ impl Tun {
             ));
         }
 
-        let mut req = libc::ifreq {
+        let mut req = ifreq {
             ifr_name: if_name.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+            ifr_ifru: __c_anonymous_ifr_ifru {
                 ifru_data: ptr::null_mut(),
             },
         };
@@ -188,9 +187,9 @@ impl Tun {
 
     /// Destroys the TUN device specified by the given interface name.
     pub fn destroy(if_name: Interface) -> io::Result<()> {
-        let mut req = libc::ifreq {
+        let mut req = ifreq {
             ifr_name: if_name.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+            ifr_ifru: __c_anonymous_ifr_ifru {
                 ifru_data: ptr::null_mut(),
             },
         };
@@ -225,9 +224,9 @@ impl Tun {
             ));
         }
 
-        let mut req = libc::ifreq {
+        let mut req = ifreq {
             ifr_name: if_name.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+            ifr_ifru: __c_anonymous_ifr_ifru {
                 ifru_data: ptr::null_mut(),
             },
         };
@@ -356,24 +355,6 @@ impl Tun {
         Self::new_named(if_name)
     }
 
-    #[cfg(target_os = "freebsd")]
-    fn tun_devname(tun_fd: RawFd) -> io::Result<Interface> {
-        unsafe {
-            let mut name = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
-            if fdevname_r(
-                tun_fd,
-                name.as_mut_ptr() as *mut libc::c_char,
-                Interface::MAX_INTERFACE_NAME_LEN as i32,
-            )
-            .is_null()
-            {
-                return Err(io::Error::last_os_error());
-            }
-
-            Ok(Interface::from_raw(name))
-        }
-    }
-
     /// Retrieves the network-layer addresses assigned to the interface.
     ///
     /// OpenBSD automatically assigns a link-layer IPv6 address (in addition to the specified IPv6
@@ -426,9 +407,9 @@ impl Tun {
 
     #[cfg(any(target_os = "netbsd"))]
     pub fn name_impl(&self) -> io::Result<Interface> {
-        let mut req = libc::ifreq {
+        let mut req = ifreq {
             ifr_name: [0i8; _],
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+            ifr_ifru: __c_anonymous_ifr_ifru {
                 ifru_data: ptr::null_mut(),
             },
         };

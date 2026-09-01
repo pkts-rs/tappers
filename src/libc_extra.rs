@@ -12,7 +12,7 @@
 
 use std::mem;
 
-#[cfg(target_os = "freebsd")]
+#[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
 extern "C" {
     pub fn fdevname_r(
         fd: libc::c_int,

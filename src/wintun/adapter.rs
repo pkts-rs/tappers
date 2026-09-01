@@ -253,6 +253,7 @@ impl TunAdapter {
     /// `ring_size` indicates the size of the buffer allocated for transmitting and receiving
     /// packets in each session. Its value must be a power of 2 between 0x20000 (128 kiB) and
     /// 0x4000000 (64 MiB), inclusive.
+    #[allow(unused)]
     fn start_sessions(
         &mut self,
         ring_size: u32,

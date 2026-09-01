@@ -12,7 +12,7 @@
 
 use std::mem;
 
-#[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
+#[cfg(target_os = "freebsd")]
 extern "C" {
     pub fn fdevname_r(
         fd: libc::c_int,
@@ -21,12 +21,10 @@ extern "C" {
     ) -> *const libc::c_char;
 }
 
-/*
 #[cfg(target_os = "dragonfly")]
 extern "C" {
-    pub fn fdevname_r(fd: libc::c_int, buf: *mut libc::c_char, len: libc::c_int) -> libc::c_int;
+    pub fn fdevname_r(fd: libc::c_int, buf: *mut libc::c_char, len: libc::size_t) -> libc::c_int;
 }
-*/
 
 #[cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "macos"))]
 pub const SCOPE6_ID_MAX: usize = 16;

@@ -275,14 +275,25 @@ impl Tap {
                 BUFLEN as i32,
             )
         };
+        #[cfg(target_os = "freebsd")]
+        let is_err = res.is_null();
+        #[cfg(target_os = "dragonfly")]
+        let is_err = res != 0;
+
+        #[cfg(target_os = "freebsd")]
         if res.is_null() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "unknown error in fdevname_r()",
             ));
-        } else {
-            return Ok(unsafe { Interface::from_raw(buf) });
         }
+
+        #[cfg(target_os = "dragonfly")]
+        if res != 0 {
+            return io::Error::from_raw_os_error(res);
+        }
+
+        Ok(unsafe { Interface::from_raw(buf) });
     }
 
     #[cfg(any(target_os = "netbsd"))]
@@ -308,7 +319,7 @@ impl Tap {
 
         let res = unsafe { libc::fstat(self.fd, &raw mut stats) };
         if res < 0 {
-            return io::Error::last_os_error();
+            return Err(io::Error::last_os_error());
         }
 
         let minor_number = unsafe { libc::minor(stats.st_rdev) };

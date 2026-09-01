@@ -13,7 +13,10 @@ use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd};
 use std::path::PathBuf;
-use std::{array, io, ptr};
+
+#[cfg(any(target_os = "netbsd", target_os = "openbsd"))]
+use std::array;
+use std::{io, ptr};
 
 use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
@@ -428,7 +431,7 @@ impl Tun {
 
         let res = unsafe { libc::fstat(self.fd, &raw mut stats) };
         if res < 0 {
-            return io::Error::last_os_error();
+            return Err(io::Error::last_os_error());
         }
 
         let minor_number = unsafe { libc::minor(stats.st_rdev) };

@@ -342,10 +342,7 @@ impl Tun {
 
         panic!("{:?}", path);
 
-        let tun = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)?;
+        let tun = OpenOptions::new().read(true).write(true).open(path)?;
 
         Ok(Self {
             fd: tun.into_raw_fd(),
@@ -399,13 +396,7 @@ impl Tun {
         let buflen = (Interface::MAX_INTERFACE_NAME_LEN + 1) as i32;
 
         let mut buf = [0u8; BUFLEN];
-        let res = unsafe {
-            fdevname_r(
-                self.fd,
-                buf.as_mut_ptr().cast::<libc::c_char>(),
-                buflen,
-            )
-        };
+        let res = unsafe { fdevname_r(self.fd, buf.as_mut_ptr().cast::<libc::c_char>(), buflen) };
 
         #[cfg(target_os = "dragonfly")]
         if res != 0 {

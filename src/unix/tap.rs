@@ -242,7 +242,7 @@ impl Tap {
     /// Retrieves the interface name associated with the TAP device.
     #[inline]
     pub fn name(&self) -> io::Result<Interface> {
-        self.name_impl(self.fd)
+        Self::name_impl(self.fd)
     }
 
     #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
@@ -296,7 +296,7 @@ impl Tap {
             return Err(io::Error::last_os_error());
         }
 
-        let minor_number = unsafe { libc::minor(stats.st_rdev) };
+        let minor_number = libc::minor(stats.st_rdev);
         Ok(Interface::new(format!("tap{}", minor_number)).unwrap())
     }
 

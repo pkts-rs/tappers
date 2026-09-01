@@ -314,7 +314,7 @@ impl Tun {
                 .open(format!("/dev/tun{}", device_num))
             {
                 Ok(tun) => tun,
-                Err(e) if matches!(e.raw_os_error(), Some(libc::BUSY | libc::EEXIST)) => continue,
+                Err(e) if matches!(e.raw_os_error(), Some(libc::EBUSY | libc::EEXIST)) => continue,
                 Err(e) => return Err(e),
             };
 
@@ -441,7 +441,7 @@ impl Tun {
             return Err(io::Error::last_os_error());
         }
 
-        let minor_number = unsafe { libc::minor(stats.st_rdev) };
+        let minor_number = libc::minor(stats.st_rdev);
         Ok(Interface::new(format!("tun{}", minor_number)).unwrap())
     }
 

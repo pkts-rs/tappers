@@ -71,6 +71,11 @@ impl TunImpl {
         Tun::exists(if_name)
     }
 
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        Tun::exists_numbered(device_num)
+    }
+
     #[cfg(feature = "portable-racy")]
     #[inline]
     pub fn open(device_num: u32) -> io::Result<Self> {

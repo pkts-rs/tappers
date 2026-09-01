@@ -225,6 +225,12 @@ impl Tun {
         }
     }
 
+    /// Checks to see whether a TUN device of the given device number exists.
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        let if_name = Interface::new(format!("tun{}", device_num)).unwrap();
+        Self::exists(if_name)
+    }
+
     /// Creates a new, unique TUN device.
     /// 
     /// # Platform-Specific Considerations

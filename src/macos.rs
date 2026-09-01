@@ -36,6 +36,11 @@ impl TunImpl {
         Utun::exists(if_name)
     }
 
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        Utun::exists_numbered(device_num)
+    }
+
     /// Creates a new, unique TUN device and returns an open handle to it.
     #[inline]
     pub fn new() -> io::Result<Self> {

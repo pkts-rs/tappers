@@ -149,7 +149,7 @@ impl TunImpl {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for TunImpl {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.tun.as_fd()
     }
 }
@@ -236,7 +236,7 @@ impl TapImpl {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for TapImpl {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.tap.as_fd()
     }
 }

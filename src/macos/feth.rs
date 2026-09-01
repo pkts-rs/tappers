@@ -1029,7 +1029,7 @@ impl FethTap {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for FethTap {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         unsafe { BorrowedFd::borrow_raw(self.bpf_fd) }
     }
 }

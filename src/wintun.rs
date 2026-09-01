@@ -119,6 +119,12 @@ impl TunImpl {
         }
     }
 
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        let if_name = Interface::new(format!("tun{}", device_num)).unwrap();
+        Self::exists(if_name)
+    }
+
     pub fn open(device_num: u32) -> io::Result<Self> {
         let device_string = format!("tun{}", device_num);
         let if_name = Interface::new(&device_string).unwrap();

@@ -85,8 +85,8 @@ impl Tun {
 
     /// Checks to see whether a TUN device of the given interface number exists.
     #[inline]
-    pub fn exists_numbered(if_name: Interface) -> io::Result<bool> {
-        TunImpl::exists(if_name)
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        TunImpl::exists_numbered(device_num)
     }
 
     /// Destroys the TUN device specified by the given interface name.

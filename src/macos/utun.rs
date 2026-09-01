@@ -77,6 +77,11 @@ impl Utun {
         }
     }
 
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        let if_name = Interface::new(format!("tun{}", device_num)).unwrap();
+        Self::exists(if_name)
+    }
+
     /// Creates a new TUN device.
     ///
     /// The interface name associated with this TUN device is chosen by the system, and can be
@@ -463,7 +468,7 @@ impl Utun {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for Utun {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         unsafe { BorrowedFd::borrow_raw(self.fd) }
     }
 }

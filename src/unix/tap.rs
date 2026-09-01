@@ -268,11 +268,20 @@ impl Tap {
     pub fn name_impl(&self) -> io::Result<Interface> {
         const BUFLEN: usize = Interface::MAX_INTERFACE_NAME_LEN + 1;
         let mut buf = [0u8; BUFLEN];
-        let res = unsafe { fdevname_r(self.fd, buf.as_mut_ptr().cast::<libc::c_char>(), BUFLEN as i32) };
+        let res = unsafe {
+            fdevname_r(
+                self.fd,
+                buf.as_mut_ptr().cast::<libc::c_char>(),
+                BUFLEN as i32,
+            )
+        };
         if res.is_null() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "unknown error in fdevname_r()"))
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "unknown error in fdevname_r()",
+            ));
         } else {
-            return Ok(unsafe { Interface::from_raw(buf) })
+            return Ok(unsafe { Interface::from_raw(buf) });
         }
     }
 
@@ -280,7 +289,9 @@ impl Tap {
     pub fn name_impl(&self) -> io::Result<Interface> {
         let mut req = libc::ifreq {
             ifr_name: [0i8; _],
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_data: ptr::null_mut() },
+            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+                ifru_data: ptr::null_mut(),
+            },
         };
 
         let res = unsafe { libc::ioctl(self.fd, TAPGIFNAME, &raw mut req) };
@@ -297,7 +308,7 @@ impl Tap {
 
         let res = unsafe { libc::fstat(self.fd, &raw mut stats) };
         if res < 0 {
-            return io::Error::last_os_error()
+            return io::Error::last_os_error();
         }
 
         let minor_number = unsafe { libc::minor(stats.st_rdev) };

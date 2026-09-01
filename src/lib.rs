@@ -133,7 +133,13 @@
 // Show required OS/features on docs.rs.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(any(doc, all(feature = "async-std", any(not(target_os = "windows"), feature = "wintun"))))]
+#[cfg(any(
+    doc,
+    all(
+        feature = "async-std",
+        any(not(target_os = "windows"), feature = "wintun")
+    )
+))]
 pub mod async_std;
 #[cfg(any(doc, target_os = "linux"))]
 pub mod linux;
@@ -141,9 +147,15 @@ pub mod linux;
 pub mod macos;
 #[cfg(any(doc, all(feature = "mio", not(target_os = "windows"))))]
 pub mod mio;
-#[cfg(any(doc, all(feature = "smol", any(not(target_os = "windows"), feature = "wintun"))))]
+#[cfg(any(
+    doc,
+    all(feature = "smol", any(not(target_os = "windows"), feature = "wintun"))
+))]
 pub mod smol;
-#[cfg(any(doc, all(feature = "tokio", any(not(target_os = "windows"), feature = "wintun"))))]
+#[cfg(any(
+    doc,
+    all(feature = "tokio", any(not(target_os = "windows"), feature = "wintun"))
+))]
 pub mod tokio;
 #[cfg(any(
     doc,
@@ -809,7 +821,13 @@ impl Interface {
         // However, it looks like doing so is non-trivial; simply pulling out the socket creation
         // from this loop causes an unexpected bug in message parsing.
         for ifa_family in [libc::AF_INET, libc::AF_INET6] {
-            let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE | libc::SOCK_CLOEXEC) };
+            let fd = unsafe {
+                libc::socket(
+                    libc::AF_NETLINK,
+                    libc::SOCK_RAW,
+                    libc::NETLINK_ROUTE | libc::SOCK_CLOEXEC,
+                )
+            };
             if fd < 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -1160,7 +1178,13 @@ impl Interface {
         };
         let prefixlen = req.netmask().unwrap_or(default_prefixlen);
 
-        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE | libc::SOCK_CLOEXEC) };
+        let fd = unsafe {
+            libc::socket(
+                libc::AF_NETLINK,
+                libc::SOCK_RAW,
+                libc::NETLINK_ROUTE | libc::SOCK_CLOEXEC,
+            )
+        };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }

@@ -51,7 +51,10 @@ impl Utun {
     #[inline]
     pub fn exists(if_name: Interface) -> io::Result<bool> {
         if &if_name.name_raw()[..4] != b"utun" || !matches!(if_name.name_raw()[4], b'0'..=b'9') {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "non-TUN interface name provided"))
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "non-TUN interface name provided",
+            ));
         }
 
         let mut req = libc::ifreq {
@@ -95,7 +98,10 @@ impl Utun {
     #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
         if &if_name.name_raw()[..4] != b"utun" || !matches!(if_name.name_raw()[4], b'0'..=b'9') {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "non-TUN interface name provided"))
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "non-TUN interface name provided",
+            ));
         }
 
         let len = if_name.name.iter().position(|b| *b == 0).unwrap_or(0);

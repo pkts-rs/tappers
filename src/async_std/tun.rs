@@ -10,11 +10,11 @@
 
 #[cfg(target_os = "windows")]
 use std::borrow::ToOwned;
-#[cfg(target_os = "windows")]
-use std::sync::Arc;
 use std::io;
 #[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
+#[cfg(target_os = "windows")]
+use std::sync::Arc;
 
 #[cfg(not(target_os = "windows"))]
 use crate::{AddAddress, AddressInfo};
@@ -45,13 +45,19 @@ pub struct AsyncTun {
 
 impl AsyncTun {
     /// Opens an existing TUN device of the given device number.
-    #[cfg(any(target_os = "windows", all(feature = "portable-racy", not(target_os = "macos"))))]
+    #[cfg(any(
+        target_os = "windows",
+        all(feature = "portable-racy", not(target_os = "macos"))
+    ))]
     #[inline]
     pub fn open(device_num: u32) -> io::Result<Self> {
         Self::open_impl(device_num)
     }
 
-    #[cfg(all(feature = "portable-racy", not(any(target_os = "macos", target_os = "windows"))))]
+    #[cfg(all(
+        feature = "portable-racy",
+        not(any(target_os = "macos", target_os = "windows"))
+    ))]
     pub fn open_impl(device_num: u32) -> io::Result<Self> {
         let tun = Tun::open(device_num)?;
         tun.set_nonblocking(true)?;
@@ -72,7 +78,10 @@ impl AsyncTun {
     }
 
     /// Creates a new, unique TUN device.
-    #[cfg(any(feature = "portable-racy", not(any(target_os = "openbsd", target_os = "windows"))))]
+    #[cfg(any(
+        feature = "portable-racy",
+        not(any(target_os = "openbsd", target_os = "windows"))
+    ))]
     #[inline]
     pub fn new() -> io::Result<Self> {
         Self::new_impl()
@@ -89,7 +98,10 @@ impl AsyncTun {
         })
     }
 
-    #[cfg(all(not(target_os = "windows"), any(feature = "portable-racy", not(target_os = "openbsd"))))]
+    #[cfg(all(
+        not(target_os = "windows"),
+        any(feature = "portable-racy", not(target_os = "openbsd"))
+    ))]
     #[inline]
     pub fn new_impl() -> io::Result<Self> {
         let tun = Tun::new()?;

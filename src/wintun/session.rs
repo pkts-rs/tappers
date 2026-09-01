@@ -81,7 +81,12 @@ impl<'a> TunSession<'a> {
         // 1. Ensure any use of this mutable pointer is thread-safe
         // 2. Watch out for mutation to the WintunSession while another reference is relying on its
         // state (e.g. iterator invalidation).
-        Self::send_impl(&self.adapter, self.session, self.nonblocking.load(Ordering::Relaxed), buf)
+        Self::send_impl(
+            &self.adapter,
+            self.session,
+            self.nonblocking.load(Ordering::Relaxed),
+            buf,
+        )
     }
 
     #[inline]
@@ -133,7 +138,12 @@ impl<'a> TunSession<'a> {
         // 1. Ensure any use of this mutable pointer is thread-safe
         // 2. Watch out for mutation to the WintunSession while another reference is relying on its
         // state (e.g. iterator invalidation).
-        Self::recv_impl(&self.adapter, self.session, self.nonblocking.load(Ordering::Relaxed), buf)
+        Self::recv_impl(
+            &self.adapter,
+            self.session,
+            self.nonblocking.load(Ordering::Relaxed),
+            buf,
+        )
     }
 
     #[inline]

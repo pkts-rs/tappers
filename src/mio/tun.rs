@@ -29,7 +29,10 @@ pub struct AsyncTun {
 
 impl AsyncTun {
     /// Opens an existing TUN device of the given device number.
-    #[cfg(any(target_os = "windows", all(feature = "portable-racy", not(target_os = "macos"))))]
+    #[cfg(any(
+        target_os = "windows",
+        all(feature = "portable-racy", not(target_os = "macos"))
+    ))]
     #[inline]
     pub fn open(device_num: u32) -> io::Result<Self> {
         let tun = Tun::open(device_num)?;

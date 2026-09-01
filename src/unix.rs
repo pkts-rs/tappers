@@ -79,7 +79,9 @@ impl TunImpl {
     #[cfg(feature = "portable-racy")]
     #[inline]
     pub fn open(device_num: u32) -> io::Result<Self> {
-        Ok(Self { tun: Tun::open(device_num)? })
+        Ok(Self {
+            tun: Tun::open(device_num)?,
+        })
     }
 
     #[inline]

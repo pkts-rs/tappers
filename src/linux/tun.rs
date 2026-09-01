@@ -11,9 +11,9 @@
 use std::ffi::CStr;
 use std::fs::{File, OpenOptions};
 use std::net::IpAddr;
-use std::os::fd::{FromRawFd, IntoRawFd};
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
+use std::os::fd::{FromRawFd, IntoRawFd};
 use std::{array, io, ptr};
 
 use crate::RawFd;
@@ -44,7 +44,7 @@ pub struct Tun {
 
 impl Tun {
     /// Creates a new, unique persistent TUN device, returning its interface name.
-    /// 
+    ///
     /// The created TUN device may subsequently be opened using [`Tun::open`]. To atomically create
     /// and open a TUN device in one operation, the `Tun::new()` function may be used, though it is
     /// only supported on certain platforms.
@@ -73,12 +73,12 @@ impl Tun {
         let tun = Self { fd };
         tun.set_persistent(true)?;
         drop(tun);
-        
+
         Ok(unsafe { Interface::from_raw(array::from_fn(|i| req.ifr_name[i] as u8)) })
     }
 
     /// Creates a new persistent TUN device of the given name.
-    /// 
+    ///
     /// The created TUN device may subsequently be opened using [`open()`](Tun::open). To atomically
     /// create and open a named TUN device in one operation, the [`new_named()`](Self::new_named)
     /// function may be used, though it is only supported on certain platforms.
@@ -91,7 +91,7 @@ impl Tun {
 
     /// Creates a new persistent TUN device of the given device number, erroring if the device
     /// already exists.
-    /// 
+    ///
     /// A handle to the created TUN device may subsequently be opened using [`Tun::new_named`] (or
     /// [`Tun::open`] if the `portable-racy` feature is enabled). The created TUN device is
     /// persistent until OS reboot unless it is explicitly destroyed.
@@ -194,7 +194,10 @@ impl Tun {
         // opening the TUN device. There remains a TOCTOU weakness here, but it's about as close as
         // we can get to conforming behavior.
         if if_name.index().is_err() {
-            return Err(io::Error::new(io::ErrorKind::NotFound, "TUN device does not exist"));
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "TUN device does not exist",
+            ));
         }
 
         if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
@@ -245,7 +248,7 @@ impl Tun {
     }
 
     /// Opens or creates a TUN device of the given name, returning an open handle to it.
-    /// 
+    ///
     /// if `exclusive` is set to `true`, this function will fail if a TUN device matching `if_name`
     /// already exists. A TUN device created (and not opened) via this method is not persistent; it
     /// will be destroyed when the returned `Tun` object goes out of scope unless its persistence is
@@ -279,7 +282,7 @@ impl Tun {
     }
 
     /// Opens or creates a TUN device of the given device number, returning an open handle to it.
-    /// 
+    ///
     /// If `exclusive` is set to `true`, this function will fail if a TUN device matching `if_name`
     /// already exists. A TUN device created (and not opened) via this method is not persistent; it
     /// will be destroyed when the returned `Tun` object goes out of scope unless its persistence is
@@ -311,7 +314,7 @@ impl Tun {
     }
 
     /// Returns the persistence state of the TUN interface.
-    /// 
+    ///
     /// If `false`, the TUN device will be removed automatically on drop or on application exit.
     /// If `true`, the TUN device will persist between applications opening it unles explicitly
     /// destroyed.

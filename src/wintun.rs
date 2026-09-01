@@ -65,7 +65,7 @@ impl TunImpl {
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
                 Err(e) => return Err(e),
             }
-        };
+        }
 
         Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -80,11 +80,14 @@ impl TunImpl {
                 // There is a minor race condition where create() fails but another device deletes
                 // its existing open Wintun adapter before open() is called here. In this case, we
                 // pretend that we won the race but that the adapter had a session already attached
-                // to it (hence io::ErrorKind::ResourceBusy). 
+                // to it (hence io::ErrorKind::ResourceBusy).
                 match TunAdapter::open(if_name) {
                     Ok(adapter) => adapter,
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                        return Err(io::Error::new(io::ErrorKind::ResourceBusy, "device currently in use"))
+                        return Err(io::Error::new(
+                            io::ErrorKind::ResourceBusy,
+                            "device currently in use",
+                        ))
                     }
                     Err(e) => return Err(e),
                 }
@@ -96,7 +99,7 @@ impl TunImpl {
             unsafe { adapter.adapter.as_mut() },
             TunSession::DEFAULT_RING_SIZE,
         )?;
-        
+
         Ok(Self {
             adapter,
             session,

@@ -50,7 +50,7 @@ impl TunAdapter {
         let guid = Self::generate_guid(if_name, tunnel_type);
 
         let adapter = wintun.create_adapter(&name_utf16, &type_utf16, guid)?;
-        
+
         Ok(Self {
             adapter,
             if_name,

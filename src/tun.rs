@@ -56,7 +56,7 @@ pub struct Tun {
 impl Tun {
     /// Creates a new persistent TUN device with a unique device number assigned and returns its
     /// interface name.
-    /// 
+    ///
     /// The created TUN device may subsequently be opened using [`Tun::open`] or [`Tun::new_named`]. The created TUN
     /// device is persistent until OS reboot unless it is explicitly destroyed.
     #[cfg(not(any(target_os = "macos", target_os = "openbsd", target_os = "windows")))]
@@ -67,7 +67,7 @@ impl Tun {
 
     /// Creates a new persistent TUN device of the given device number, erroring if the device
     /// already exists.
-    /// 
+    ///
     /// A handle to the created TUN device may subsequently be opened using [`Tun::new_numbered`] (or
     /// [`Tun::open`] if the `portable-racy` feature is enabled). The created TUN device is
     /// persistent until OS reboot unless it is explicitly destroyed.
@@ -102,20 +102,26 @@ impl Tun {
     }
 
     /// Opens an existing TUN device of the given device number.
-    #[cfg(any(target_os = "windows", all(feature = "portable-racy", not(target_os = "macos"))))]
+    #[cfg(any(
+        target_os = "windows",
+        all(feature = "portable-racy", not(target_os = "macos"))
+    ))]
     #[inline]
     pub fn open(device_num: u32) -> io::Result<Self> {
         Ok(Self {
-            inner: TunImpl::open(device_num)?
+            inner: TunImpl::open(device_num)?,
         })
     }
 
     /// Creates a new, unique TUN device and returns an open handle to it.
-    /// 
+    ///
     /// The interface name associated with this TUN device is chosen by the system, and can be
     /// retrieved via the [`name()`](Self::name) method. The created TUN device is not persistent,
     /// meaning that it will be destroyed when the returned `Tun` object goes out of scope.
-    #[cfg(any(feature = "portable-racy", not(any(target_os = "openbsd", target_os = "windows"))))]
+    #[cfg(any(
+        feature = "portable-racy",
+        not(any(target_os = "openbsd", target_os = "windows"))
+    ))]
     #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Self {
@@ -124,7 +130,7 @@ impl Tun {
     }
 
     /// Opens or creates a TUN device of the given device number, returning an open handle to it.
-    /// 
+    ///
     /// The created TUN device is not persistent, meaning that it will be destroyed when the
     /// returned `Tun` object goes out of scope.
     #[inline]
@@ -290,7 +296,10 @@ mod tests {
         let tun_iface = tun.name().unwrap();
 
         let name = tun_iface.name();
-        assert_eq!(name.as_encoded_bytes()[name.as_encoded_bytes().len() - 1], b'9');
+        assert_eq!(
+            name.as_encoded_bytes()[name.as_encoded_bytes().len() - 1],
+            b'9'
+        );
     }
 
     /*

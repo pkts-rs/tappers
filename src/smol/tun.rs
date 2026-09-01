@@ -108,19 +108,19 @@ impl AsyncTun {
 
     /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         unsafe { self.tun.get_mut().set_state(state) }
     }
 
     /// Sets the adapter state of the TUN device to "up".
     #[inline]
-    pub fn set_up(&mut self) -> io::Result<()> {
+    pub fn set_up(&self) -> io::Result<()> {
         unsafe { self.tun.get_mut().set_state(DeviceState::Up) }
     }
 
     /// Sets the adapter state of the TUN device to "down".
     #[inline]
-    pub fn set_down(&mut self) -> io::Result<()> {
+    pub fn set_down(&self) -> io::Result<()> {
         unsafe { self.tun.get_mut().set_state(DeviceState::Down) }
     }
 

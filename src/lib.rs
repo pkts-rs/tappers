@@ -809,7 +809,7 @@ impl Interface {
         // However, it looks like doing so is non-trivial; simply pulling out the socket creation
         // from this loop causes an unexpected bug in message parsing.
         for ifa_family in [libc::AF_INET, libc::AF_INET6] {
-            let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
+            let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE | libc::SOCK_CLOEXEC) };
             if fd < 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -1160,7 +1160,7 @@ impl Interface {
         };
         let prefixlen = req.netmask().unwrap_or(default_prefixlen);
 
-        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
+        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE | libc::SOCK_CLOEXEC) };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }

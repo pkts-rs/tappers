@@ -41,24 +41,58 @@ pub struct iovec_const {
     pub iov_len: libc::size_t,
 }
 
+#[repr(transparent)]
 pub struct Utun {
     fd: RawFd,
 }
 
 /// A UTUN interface that includes MacOS-specific TUN functionality.
 impl Utun {
+    #[inline]
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        if &if_name.name_raw()[..4] != b"utun" || !matches!(if_name.name_raw()[4], b'0'..=b'9') {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "non-TUN interface name provided"))
+        }
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let res = unsafe { libc::ioctl(fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) };
+        let err = io::Error::last_os_error();
+        Self::close_fd(fd);
+
+        if res == 0 {
+            Ok(true)
+        } else if matches!(err.raw_os_error(), Some(libc::ENXIO)) {
+            Ok(false)
+        } else {
+            Err(err)
+        }
+    }
+
     /// Creates a new TUN device.
     ///
     /// The interface name associated with this TUN device is chosen by the system, and can be
     /// retrieved via the [`name()`](Self::name) method.
+    #[inline]
     pub fn new() -> io::Result<Self> {
         Self::new_internal(0)
     }
 
-    /// Opens a TUN device with the given interface name `if_name`.
-    ///
-    /// If no TUN device exists for the given interface name, this method will create a new one.
+    /// Creates a new TUN device with the given interface name `if_name`.
+    #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
+        if &if_name.name_raw()[..4] != b"utun" || !matches!(if_name.name_raw()[4], b'0'..=b'9') {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "non-TUN interface name provided"))
+        }
+
         let len = if_name.name.iter().position(|b| *b == 0).unwrap_or(0);
 
         if len < 5 || &if_name.name[..4] != UTUN_PREFIX {
@@ -76,9 +110,8 @@ impl Utun {
         Self::new_numbered(n)
     }
 
-    /// Opens a TUN device with the given tun number `utun_number`.
-    ///
-    /// If no TUN device exists for the given interface name, this method will create a new one.
+    /// Creates a new TUN device with the given TUN number `utun_number`.
+    #[inline]
     pub fn new_numbered(utun_number: u32) -> io::Result<Self> {
         Self::new_internal(utun_number.checked_add(1).ok_or(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -86,6 +119,7 @@ impl Utun {
         ))?)
     }
 
+    #[inline]
     fn new_internal(sc_unit: u32) -> io::Result<Self> {
         let fd = unsafe { libc::socket(libc::AF_SYSTEM, libc::SOCK_DGRAM, libc::SYSPROTO_CONTROL) };
         if fd < 0 {
@@ -159,6 +193,7 @@ impl Utun {
     }
 
     /// Retrieves the name of the interface.
+    #[inline]
     pub fn name(&self) -> io::Result<Interface> {
         let mut name_buf = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
         let name_ptr = ptr::addr_of_mut!(name_buf) as *mut libc::c_void;
@@ -182,6 +217,7 @@ impl Utun {
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TUN device.
+    #[inline]
     pub fn mtu(&self) -> io::Result<usize> {
         let if_name = self.name()?;
 
@@ -201,26 +237,6 @@ impl Utun {
                 0 => Ok(req.ifr_ifru.ifru_devmtu.ifdm_current as usize),
                 _ => Err(io::Error::last_os_error()),
             }
-        }
-    }
-
-    /// Retrieves the current state of the TUN device (i.e. "up" or "down").
-    pub fn state(&self) -> io::Result<DeviceState> {
-        let if_name = self.name()?;
-
-        let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
-        };
-
-        if unsafe { libc::ioctl(self.fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        if unsafe { req.ifr_ifru.ifru_flags & libc::IFF_UP as i16 > 0 } {
-            Ok(DeviceState::Up)
-        } else {
-            Ok(DeviceState::Down)
         }
     }
 
@@ -249,6 +265,27 @@ impl Utun {
         }
 
         Ok(())
+    }
+
+    /// Retrieves the current state of the TUN device (i.e. "UP" or "DOWN").
+    #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        let if_name = self.name()?;
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        if unsafe { libc::ioctl(self.fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        if unsafe { req.ifr_ifru.ifru_flags & (libc::IFF_UP as i16) > 0 } {
+            Ok(DeviceState::Up)
+        } else {
+            Ok(DeviceState::Down)
+        }
     }
 
     /// Sends a packet out over the TUN device.

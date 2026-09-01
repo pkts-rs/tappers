@@ -35,20 +35,42 @@ pub(crate) const DEV_NET_TUN: *const libc::c_char =
 // To delete a device, Netlink RTM_DELLINK is needed
 // for *BSD, look into `brctl delif`
 
+#[repr(transparent)]
 pub(crate) struct TunImpl {
     tun: Tun,
 }
 
 impl TunImpl {
     #[inline]
+    pub fn create() -> io::Result<Interface> {
+        Tun::create()
+    }
+
+    #[inline]
+    pub fn create_named(if_name: Interface) -> io::Result<()> {
+        Tun::create_named()
+    }
+
+    #[inline]
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        Tun::exists(if_name)
+    }
+
+    #[cfg(feature = "portable-racy")]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        Tun::open(device_num)
+    }
+
+    #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Self { tun: Tun::new()? })
     }
 
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
+    pub fn new_numbered(device_num: u32) -> io::Result<Self> {
         Ok(Self {
-            tun: Tun::new_named(if_name)?,
+            tun: Tun::new_numbered(device_num, false)?,
         })
     }
 
@@ -73,7 +95,12 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn state(&self, state: DeviceState) -> io::Result<DeviceState> {
+        self.tun.state(state)
+    }
+
+    #[inline]
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tun.set_state(state)
     }
 
@@ -83,7 +110,7 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.tun.set_nonblocking(nonblocking)
     }
 
@@ -155,7 +182,7 @@ impl TapImpl {
     }
 
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tap.set_state(state)
     }
 

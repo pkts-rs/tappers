@@ -82,7 +82,7 @@ impl Tap {
     fn new_from_cloned() -> io::Result<Self> {
         let tap_ptr = b"/dev/tap\0".as_ptr() as *const libc::c_char;
         // TODO: unify `ErrorKind`s returned
-        let fd = unsafe { libc::open(tap_ptr, libc::O_CREAT | libc::O_RDWR | libc::O_CLOEXEC) };
+        let fd = unsafe { libc::open(tap_ptr, libc::O_RDWR | libc::O_CLOEXEC) };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -188,7 +188,7 @@ impl Tap {
         let tap_path = [b"/dev/", iface.name_cstr().to_bytes_with_nul()].concat();
         let tap_ptr = tap_path.as_ptr() as *const libc::c_char;
 
-        let fd = unsafe { libc::open(tap_ptr, libc::O_CREAT | libc::O_RDWR | libc::O_CLOEXEC) };
+        let fd = unsafe { libc::open(tap_ptr, libc::O_RDWR | libc::O_CLOEXEC) };
         if fd < 0 {
             let err = io::Error::last_os_error();
             Self::destroy_iface(ctrl_fd, iface);
@@ -264,34 +264,6 @@ impl Tap {
         Ok(self.iface)
     }
 
-    /// Retrieves the current state of the TAP device (i.e. "up" or "down").
-    #[inline]
-    pub fn state(&self) -> io::Result<DeviceState> {
-        let ctrl_fd = Self::ctrl_fd();
-
-        let mut req = ifreq_empty();
-        req.ifr_name = self.iface.name_raw_char();
-
-        if unsafe { libc::ioctl(ctrl_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(ctrl_fd);
-            return Err(err);
-        }
-
-        #[cfg(any(target_os = "netbsd", target_os = "openbsd"))]
-        let is_up = unsafe { req.ifr_ifru.ifru_flags & libc::IFF_UP as i16 > 0 };
-        #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
-        let is_up = unsafe { req.ifr_ifru.ifru_flags[0] & libc::IFF_UP as i16 > 0 };
-
-        Self::close_fd(ctrl_fd);
-
-        if is_up {
-            Ok(DeviceState::Up)
-        } else {
-            Ok(DeviceState::Down)
-        }
-    }
-
     /// Sets the adapter state of the TAP device (e.g. "up" or "down").
     #[inline]
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
@@ -327,6 +299,34 @@ impl Tap {
 
         Self::close_fd(ctrl_fd);
         Ok(())
+    }
+
+    /// Retrieves the current state of the TAP device (i.e. "UP" or "DOWN").
+    #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        let ctrl_fd = Self::ctrl_fd();
+
+        let mut req = ifreq_empty();
+        req.ifr_name = self.iface.name_raw_char();
+
+        if unsafe { libc::ioctl(ctrl_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+            let err = io::Error::last_os_error();
+            Self::close_fd(ctrl_fd);
+            return Err(err);
+        }
+
+        #[cfg(any(target_os = "netbsd", target_os = "openbsd"))]
+        let is_up = unsafe { req.ifr_ifru.ifru_flags & (libc::IFF_UP as i16) > 0 };
+        #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
+        let is_up = unsafe { req.ifr_ifru.ifru_flags[0] & (libc::IFF_UP as i16) > 0 };
+
+        Self::close_fd(ctrl_fd);
+
+        if is_up {
+            Ok(DeviceState::Up)
+        } else {
+            Ok(DeviceState::Down)
+        }
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TAP device.

@@ -65,7 +65,7 @@ impl Tap {
 
     /// Sets the adapter state of the TAP device (e.g. "up" or "down").
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.inner.set_state(state)
     }
 

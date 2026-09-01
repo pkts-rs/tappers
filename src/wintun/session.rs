@@ -12,6 +12,7 @@
 //!
 //!
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{cmp, io, ptr, thread};
 
@@ -27,7 +28,7 @@ use super::TunAdapter;
 pub struct TunSession<'a> {
     adapter: &'a TunAdapter,
     session: *mut WintunSession,
-    nonblocking: bool,
+    nonblocking: AtomicBool,
 }
 
 impl<'a> TunSession<'a> {
@@ -49,7 +50,7 @@ impl<'a> TunSession<'a> {
         Self {
             adapter,
             session,
-            nonblocking: false,
+            nonblocking: AtomicBool::new(false),
         }
     }
 
@@ -85,7 +86,7 @@ impl<'a> TunSession<'a> {
     pub(crate) fn send_impl(
         adapter: &TunAdapter,
         session: *mut WintunSession,
-        nonblocking: bool,
+        nonblocking: AtomicBool,
         buf: &[u8],
     ) -> io::Result<usize> {
         let packet_size = cmp::min(buf.len(), u16::MAX as usize);
@@ -94,7 +95,7 @@ impl<'a> TunSession<'a> {
         let pkt = loop {
             // SAFETY: allocate_packet is thread-safe
             let pkt_res = adapter.wintun.allocate_packet(session, packet_size as u32);
-            if nonblocking {
+            if nonblocking.load(Ordering::Relaxed) {
                 break pkt_res.map_err(|_| io::Error::from(io::ErrorKind::WouldBlock))?;
             } else {
                 // Wintun doesn't implement blocking send, so we simulate its behavior here.
@@ -136,7 +137,7 @@ impl<'a> TunSession<'a> {
     pub(crate) fn recv_impl(
         adapter: &TunAdapter,
         session: *mut WintunSession,
-        nonblocking: bool,
+        nonblocking: AtomicBool,
         buf: &mut [u8],
     ) -> io::Result<usize> {
         let mut packet_size = 0u32;
@@ -144,7 +145,7 @@ impl<'a> TunSession<'a> {
         // SAFETY: recv_packet is thread-safe
         let recv_pkt = match adapter.wintun.recv_packet(session, &mut packet_size) {
             Ok(pkt) => pkt,
-            Err(e) if e.raw_os_error() == Some(ERROR_NO_MORE_ITEMS as i32) && nonblocking => {
+            Err(e) if e.raw_os_error() == Some(ERROR_NO_MORE_ITEMS as i32) && nonblocking.load(Ordering::Relaxed) => {
                 return Err(io::ErrorKind::WouldBlock.into())
             }
             Err(e) if e.raw_os_error() == Some(ERROR_NO_MORE_ITEMS as i32) => loop {
@@ -173,7 +174,7 @@ impl<'a> TunSession<'a> {
     /// See [`set_nonblocking()`](Self::set_nonblocking) for more information on blocking and
     /// nonblocking operation.
     pub fn nonblocking(&self) -> bool {
-        self.nonblocking
+        self.nonblocking.load(Ordering::Relaxed)
     }
 
     /// Sets whether the session blocks on calls to [`send()`](Self::send) and
@@ -193,8 +194,8 @@ impl<'a> TunSession<'a> {
     /// A consequence of this is that sending packets when a queue is full may be delayed by up to
     /// 100ms; if this is unacceptable for performance, consider using nonblocking `send()`/`recv()`
     /// and implementing a tighter resend loop.
-    pub fn set_nonblocking(&mut self, nonblocking: bool) {
-        self.nonblocking = nonblocking;
+    pub fn set_nonblocking(&self, nonblocking: AtomicBool) {
+        self.nonblocking.store(nonblocking, Ordering::Relaxed);
     }
 }
 

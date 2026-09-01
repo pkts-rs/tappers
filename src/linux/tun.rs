@@ -41,12 +41,108 @@ pub struct Tun {
 }
 
 impl Tun {
-    /// Creates a new, unique TUN device.
+    /// Creates a new, unique persistent TUN device, returning its interface name.
+    /// 
+    /// The created TUN device may subsequently be opened using [`Tun::open`]. To atomically create
+    /// and open a TUN device in one operation, the `Tun::new()` function may be used, though it is
+    /// only supported on certain platforms.
+    #[inline]
+    pub fn create() -> io::Result<Interface> {
+        let flags = libc::IFF_TUN_EXCL | libc::IFF_TUN | libc::IFF_NO_PI;
+
+        let mut req = libc::ifreq {
+            ifr_name: [0; 16],
+            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+                ifru_flags: flags as i16,
+            },
+        };
+
+        // TODO: unify `ErrorKind`s returned
+        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
+            Self::close_fd(fd);
+            return Err(io::Error::last_os_error());
+        }
+
+        let tun = Self { fd };
+        tun.set_persistent()?;
+        drop(tun);
+
+        Ok(Interface::from_raw(req.ifr_name))
+    }
+
+    /// Creates a new persistent TUN device of the given name.
+    /// 
+    /// The created TUN device may subsequently be opened using [`open()`](Tun::open). To atomically
+    /// create and open a named TUN device in one operation, the [`new_named()`](Self::new_named)
+    /// function may be used, though it is only supported on certain platforms.
+    #[inline]
+    pub fn create_named(if_name: Interface) -> io::Result<()> {
+        let tun = Self::new_named(if_name)?;
+        tun.set_persistent()?;
+        Ok(())
+    }
+
+    /// Creates a new persistent TUN device of the given device number, erroring if the device
+    /// already exists.
+    /// 
+    /// A handle to the created TUN device may subsequently be opened using [`Tun::new_named`] (or
+    /// [`Tun::open`] if the `portable-racy` feature is enabled). The created TUN device is
+    /// persistent until OS reboot unless it is explicitly destroyed.
+    #[cfg(not(target_os = "macos"))]
+    #[inline]
+    pub fn create_numbered(device_num: u32) -> io::Result<Self> {
+        Ok(Self {
+            inner: TunImpl::create_numbered(device_num)?,
+        })
+    }
+
+    /// Opens an existing TUN device of the given name.
+    #[cfg(feature = "portable-racy")]
+    #[inline]
+    pub fn open(if_name: Interface) -> io::Result<Self> {
+        let flags = libc::IFF_TUN | libc::IFF_NO_PI;
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+                ifru_flags: flags as i16,
+            },
+        };
+
+        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // TUNSETIFF will always create a new device if one doesn't already exist. This is contrary
+        // to the intended behavior of `open()`. We check for interface existence here before
+        // opening the TUN device. There remains a TOCTOU weakness here, but it's about as close as
+        // we can get to conforming behavior.
+        if if_name.index().is_err() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "TUN device does not exist"));
+        }
+
+        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
+            Self::close_fd(fd);
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(Self { fd })
+    }
+
+    /// Creates a new, unique TUN device and returns a handle to it.
     ///
     /// The interface name associated with this TUN device is chosen by the system, and can be
-    /// retrieved via the [`name()`](Self::name) method.
+    /// retrieved via the [`name()`](Self::name) method. The returned TUN device is not persistent;
+    /// it will be destroyed when the returned `Tun` object goes out of scope unless its persistence
+    /// is changed via a call to [`Tun::set_persistent`].
     pub fn new() -> io::Result<Self> {
-        let flags = libc::IFF_TUN_EXCL | libc::IFF_TUN | libc::IFF_NO_PI;
+        let flags = libc::IFF_TUN | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
             ifr_name: [0; 16],
@@ -69,10 +165,19 @@ impl Tun {
         Ok(Self { fd })
     }
 
-    /// Opens or creates a TUN device of the given name.
+    /// Opens or creates a TUN device of the given name, returning an open handle to it.
+    /// 
+    /// if `exclusive` is set to `true`, this function will fail if a TUN device matching `if_name`
+    /// already exists. A TUN device created (and not opened) via this method is not persistent; it
+    /// will be destroyed when the returned `Tun` object goes out of scope unless its persistence is
+    /// changed via a call to [`Tun::set_persistent`].
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        let flags = libc::IFF_TUN | libc::IFF_NO_PI;
+    pub fn new_named(if_name: Interface, exclusive: bool) -> io::Result<Self> {
+        let flags = if exclusive {
+            libc::IFF_TUN_EXCL | libc::IFF_TUN | libc::IFF_NO_PI
+        } else {
+            libc::IFF_TUN | libc::IFF_NO_PI
+        };
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_char(),
@@ -94,28 +199,17 @@ impl Tun {
         Ok(Self { fd })
     }
 
-    /// Creates a new TUN device, failing if a device of the given name already exists.
-    pub fn create_named(if_name: Interface) -> io::Result<Self> {
-        let flags = libc::IFF_TUN_EXCL | libc::IFF_TUN | libc::IFF_NO_PI;
-
-        let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
-                ifru_flags: flags as i16,
-            },
-        };
-
-        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            Self::close_fd(fd);
-            return Err(io::Error::last_os_error());
-        }
-
-        Ok(Self { fd })
+    /// Opens or creates a TUN device of the given device number, returning an open handle to it.
+    /// 
+    /// If `exclusive` is set to `true`, this function will fail if a TUN device matching `if_name`
+    /// already exists. A TUN device created (and not opened) via this method is not persistent; it
+    /// will be destroyed when the returned `Tun` object goes out of scope unless its persistence is
+    /// changed via a call to [`Tun::set_persistent`].
+    #[inline]
+    pub fn new_numbered(device_num: u32, exclusive: bool) -> io::Result<Self> {
+        let label = format!("tun{}\0", n).into_bytes();
+        let if_name = Interface::from_raw(array::from_fn(|i| label.get(i).unwrap_or(0x00)));
+        Self::new_named(if_name, exclusive)
     }
 
     /// Sets the persistence of the TUN interface.
@@ -132,6 +226,28 @@ impl Tun {
         unsafe {
             match libc::ioctl(self.fd, TUNSETPERSIST, persist) {
                 0.. => Ok(()),
+                _ => Err(io::Error::last_os_error()),
+            }
+        }
+    }
+
+    /// Returns the persistence state of the TUN interface.
+    /// 
+    /// If `false`, the TUN device will be removed automatically on drop or on application exit.
+    /// If `true`, the TUN device will persist between applications opening it unles explicitly
+    /// destroyed.
+    #[inline]
+    pub fn is_persistent(&self) -> io::Result<bool> {
+        const IFF_PERSIST: u16 = 0x800;
+
+        let mut req = libc::ifreq {
+            ifr_name: [0; 16],
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        unsafe {
+            match libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) {
+                0.. => Ok(req.ifr_ifru.ifru_flags & IFF_PERSIST > 0),
                 _ => Err(io::Error::last_os_error()),
             }
         }
@@ -228,6 +344,24 @@ impl Tun {
         match res {
             0 => Ok(()),
             _ => Err(err),
+        }
+    }
+
+    #[inline]
+    pub fn state(&self, state: DeviceState) -> io::Result<DeviceState> {
+        let mut req = libc::ifreq {
+            ifr_name: [0; 16],
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        if unsafe { libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        if unsafe { req.ifr_ifru.ifru_flags & (libc::IFF_UP as i16) > 0 } {
+            Ok(DeviceState::Up)
+        } else {
+            Ok(DeviceState::Down)
         }
     }
 

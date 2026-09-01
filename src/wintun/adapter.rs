@@ -154,7 +154,7 @@ impl TunAdapter {
             DeviceState::Down => MIB_IF_ADMIN_STATUS_DOWN,
         };
 
-        let row = MIB_IFROW {
+        let mut row = MIB_IFROW {
             wszName: [0; 256],
             dwIndex: self.if_name.index()?,
             dwType: 0,
@@ -162,7 +162,7 @@ impl TunAdapter {
             dwSpeed: 0,
             dwPhysAddrLen: 0,
             bPhysAddr: [0; 8],
-            dwAdminStatus: admin_status,
+            dwAdminStatus: 0,
             dwOperStatus: 0,
             dwLastChange: 0,
             dwInOctets: 0,
@@ -180,6 +180,13 @@ impl TunAdapter {
             dwDescrLen: 0,
             bDescr: [0; 256],
         };
+
+        let res = unsafe { GetIfEntry(ptr::addr_of_mut!(row)) };
+        if res != 0 {
+            return Err(io::Error::from_raw_os_error(res as i32));
+        }
+
+        row.dwAdminStatus = admin_status;
 
         match unsafe { SetIfEntry(ptr::addr_of!(row)) } {
             0 => Ok(()),

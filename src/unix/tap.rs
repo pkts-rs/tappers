@@ -87,7 +87,7 @@ impl Tap {
             return Err(io::Error::last_os_error());
         }
 
-        let iface = match Self::tap_devname(fd) {
+        let iface = match Self::name_impl(fd) {
             Ok(i) => i,
             Err(e) => {
                 Self::close_fd(fd);
@@ -242,18 +242,18 @@ impl Tap {
     /// Retrieves the interface name associated with the TAP device.
     #[inline]
     pub fn name(&self) -> io::Result<Interface> {
-        self.name_impl()
+        self.name_impl(self.fd)
     }
 
     #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
-    pub fn name_impl(&self) -> io::Result<Interface> {
+    fn name_impl(fd: RawFd) -> io::Result<Interface> {
         #[cfg(target_os = "dragonfly")]
         let buflen = (Interface::MAX_INTERFACE_NAME_LEN + 1) as libc::size_t;
         #[cfg(target_os = "freebsd")]
         let buflen = (Interface::MAX_INTERFACE_NAME_LEN + 1) as i32;
 
         let mut buf = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
-        let res = unsafe { fdevname_r(self.fd, buf.as_mut_ptr().cast::<libc::c_char>(), buflen) };
+        let res = unsafe { fdevname_r(fd, buf.as_mut_ptr().cast::<libc::c_char>(), buflen) };
 
         #[cfg(target_os = "dragonfly")]
         if res != 0 {
@@ -271,7 +271,7 @@ impl Tap {
     }
 
     #[cfg(any(target_os = "netbsd"))]
-    pub fn name_impl(&self) -> io::Result<Interface> {
+    fn name_impl(fd: RawFd) -> io::Result<Interface> {
         let mut req = libc::ifreq {
             ifr_name: [0i8; Interface::MAX_INTERFACE_NAME_LEN + 1],
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
@@ -279,7 +279,7 @@ impl Tap {
             },
         };
 
-        let res = unsafe { libc::ioctl(self.fd, TAPGIFNAME, &raw mut req) };
+        let res = unsafe { libc::ioctl(fd, TAPGIFNAME, &raw mut req) };
         if res != 0 {
             Err(io::Error::last_os_error())
         } else {
@@ -288,10 +288,10 @@ impl Tap {
     }
 
     #[cfg(any(target_os = "openbsd"))]
-    pub fn name_impl(&self) -> io::Result<Interface> {
+    fn name_impl(fd: RawFd) -> io::Result<Interface> {
         let mut stats: libc::stat = unsafe { std::mem::zeroed() };
 
-        let res = unsafe { libc::fstat(self.fd, &raw mut stats) };
+        let res = unsafe { libc::fstat(fd, &raw mut stats) };
         if res < 0 {
             return Err(io::Error::last_os_error());
         }

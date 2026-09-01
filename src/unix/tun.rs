@@ -14,8 +14,7 @@ use std::net::IpAddr;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd};
 use std::path::PathBuf;
 
-#[cfg(any(target_os = "netbsd", target_os = "openbsd"))]
-use std::array;
+#[cfg(not(target_os = "openbsd"))]
 use std::{io, ptr};
 
 use crate::RawFd;

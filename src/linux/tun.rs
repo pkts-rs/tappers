@@ -140,20 +140,16 @@ impl Tun {
 
     #[inline]
     pub fn exists(if_name: Interface) -> io::Result<bool> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open("/dev/net/tun")?;
-        let fd = file.into_raw_fd();
+        let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        let res = unsafe { libc::ioctl(fd, libc::SIOCGIFINDEX, &raw mut req) };
+        let res = unsafe { libc::ioctl(sockfd, libc::SIOCGIFINDEX, &raw mut req) };
         let err = io::Error::last_os_error();
-        let _ = unsafe { File::from_raw_fd(fd) };
+        let _ = unsafe { libc::close(sockfd) };
         if res == 0 {
             Ok(true)
         } else if matches!(err.raw_os_error(), Some(libc::ENODEV)) {

@@ -290,10 +290,10 @@ impl Tap {
 
         #[cfg(target_os = "dragonfly")]
         if res != 0 {
-            return io::Error::from_raw_os_error(res);
+            return Err(io::Error::from_raw_os_error(res));
         }
 
-        Ok(unsafe { Interface::from_raw(buf) });
+        Ok(unsafe { Interface::from_raw(buf) })
     }
 
     #[cfg(any(target_os = "netbsd"))]

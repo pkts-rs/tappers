@@ -340,7 +340,7 @@ impl Tun {
 
         let path = PathBuf::from("/dev").join(if_name.name());
 
-        panic!("{}", path);
+        panic!("{:?}", path);
 
         let tun = OpenOptions::new()
             .read(true)

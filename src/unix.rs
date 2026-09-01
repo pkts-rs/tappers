@@ -52,19 +52,29 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn create_numbered(device_num: u32) -> io::Result<Self> {
+    pub fn create_numbered(device_num: u32) -> io::Result<()> {
         Tun::create_numbered(device_num)
     }
 
-    #[cfg(feature = "portable-racy")]
     #[inline]
-    pub fn open(device_num: u32) -> io::Result<Self> {
-        Tun::open(device_num)
+    pub fn destroy(if_name: Interface) -> io::Result<()> {
+        Tun::destroy(if_name)
+    }
+
+    #[inline]
+    pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
+        Tun::destroy_numbered(device_num)
     }
 
     #[inline]
     pub fn exists(if_name: Interface) -> io::Result<bool> {
         Tun::exists(if_name)
+    }
+
+    #[cfg(feature = "portable-racy")]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        Ok(Self { tun: Tun::open(device_num)? })
     }
 
     #[inline]
@@ -106,7 +116,7 @@ impl TunImpl {
 
     #[inline]
     pub fn state(&self) -> io::Result<DeviceState> {
-        self.tap.state()
+        self.tun.state()
     }
 
     #[inline]
@@ -115,7 +125,7 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.tun.set_nonblocking(nonblocking)
     }
 
@@ -145,7 +155,7 @@ impl AsRawFd for TunImpl {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for TunImpl {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.tun.as_fd()
     }
 }
@@ -225,7 +235,7 @@ impl TapImpl {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for TapImpl {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.tap.as_fd()
     }
 }

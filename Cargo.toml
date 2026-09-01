@@ -20,7 +20,7 @@ rustix = { git = "https://github.com/bytecodealliance/rustix", branch = "main" }
 rustix_0_38 = { package = "rustix", git = "https://github.com/nathaniel-bennett/rustix.git", branch = "0.38" }
 
 [features]
-default = []
+default = ["async-std", "mio", "smol", "tokio", "portable-racy"]
 # Enables loading of Wintun (default is load-time unless `wintun-runtime` is specified)
 wintun = []
 # Enables loading of tap-windows6 (default is load-time unless `tapwin6-runtime` is specified)

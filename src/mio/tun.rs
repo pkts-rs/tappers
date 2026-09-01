@@ -28,10 +28,28 @@ pub struct AsyncTun {
 }
 
 impl AsyncTun {
+    /// Opens an existing TUN device of the given device number.
+    #[cfg(any(target_os = "windows", all(feature = "portable-racy", not(target_os = "macos"))))]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        let tun = Tun::open(device_num)?;
+        tun.set_nonblocking(true)?;
+
+        // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
+        // implementation so that the descriptor isn't closed twice.
+        let io = unsafe { UdpSocket::from_raw_fd(tun.as_raw_fd()) };
+
+        Ok(Self {
+            tun,
+            io: ManuallyDrop::new(io),
+        })
+    }
+
     /// Creates a new, unique TUN device.
+    #[cfg(any(feature = "portable-racy", not(target_os = "openbsd")))]
     #[inline]
     pub fn new() -> io::Result<Self> {
-        let mut tun = Tun::new()?;
+        let tun = Tun::new()?;
         tun.set_nonblocking(true)?;
 
         // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
@@ -46,8 +64,8 @@ impl AsyncTun {
 
     /// Opens or creates a TUN device of the given name.
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        let mut tun = Tun::new_named(if_name)?;
+    pub fn new_numbered(device_num: u32) -> io::Result<Self> {
+        let tun = Tun::new_numbered(device_num)?;
         tun.set_nonblocking(true)?;
 
         // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()

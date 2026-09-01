@@ -261,7 +261,47 @@ impl Tap {
     /// Retrieves the interface name associated with the TAP device.
     #[inline]
     pub fn name(&self) -> io::Result<Interface> {
-        Ok(self.iface)
+        self.name_impl()
+    }
+
+    #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
+    pub fn name_impl(&self) -> io::Result<Interface> {
+        const BUFLEN: usize = Interface::MAX_INTERFACE_NAME_LEN + 1;
+        let mut buf = [0u8; BUFLEN];
+        let res = unsafe { fdevname_r(self.fd, buf.as_mut_ptr().cast::<libc::c_char>(), BUFLEN as i32) };
+        if res.is_null() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "unknown error in fdevname_r()"))
+        } else {
+            return Ok(unsafe { Interface::from_raw(buf) })
+        }
+    }
+
+    #[cfg(any(target_os = "netbsd"))]
+    pub fn name_impl(&self) -> io::Result<Interface> {
+        let mut req = libc::ifreq {
+            ifr_name: [0i8; _],
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_data: ptr::null_mut() },
+        };
+
+        let res = unsafe { libc::ioctl(self.fd, TAPGIFNAME, &raw mut req) };
+        if res != 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(unsafe { Interface::from_raw(array::from_fn(|i| req.ifr_name[i] as u8)) })
+        }
+    }
+
+    #[cfg(any(target_os = "openbsd"))]
+    pub fn name_impl(&self) -> io::Result<Interface> {
+        let mut stats: libc::stat = unsafe { std::mem::zeroed() };
+
+        let res = unsafe { libc::fstat(self.fd, &raw mut stats) };
+        if res < 0 {
+            return io::Error::last_os_error()
+        }
+
+        let minor_number = unsafe { libc::minor(stats.st_rdev) };
+        Ok(Interface::new(format!("tap{}", minor_number)).unwrap())
     }
 
     /// Sets the adapter state of the TAP device (e.g. "up" or "down").
@@ -453,7 +493,7 @@ impl Tap {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for Tap {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         unsafe { BorrowedFd::borrow_raw(self.fd) }
     }
 }

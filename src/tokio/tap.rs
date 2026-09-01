@@ -29,11 +29,6 @@ impl TapWrapper {
     pub fn get_ref(&self) -> &Tap {
         &self.0
     }
-
-    /// Returns a reference to the underlying `Tap` function.
-    pub fn get_mut(&mut self) -> &mut Tap {
-        &mut self.0
-    }
 }
 
 /// A cross-platform asynchronous TAP interface, suitable for tunnelling link-layer packets.
@@ -104,19 +99,19 @@ impl AsyncTap {
     /// Sets the adapter state of the TAP device (e.g. "up" or "down").
     #[inline]
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
-        self.tap.get_mut().set_state(state)
+        self.tap.get_ref().set_state(state)
     }
 
     /// Sets the adapter state of the TAP device to "up".
     #[inline]
     pub fn set_up(&self) -> io::Result<()> {
-        self.tap.get_mut().set_state(DeviceState::Up)
+        self.tap.get_ref().set_state(DeviceState::Up)
     }
 
     /// Sets the adapter state of the TAP device to "down".
     #[inline]
     pub fn set_down(&self) -> io::Result<()> {
-        self.tap.get_mut().set_state(DeviceState::Down)
+        self.tap.get_ref().set_state(DeviceState::Down)
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TAP device.

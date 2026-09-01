@@ -47,8 +47,18 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn create_named(if_name: Interface) -> io::Result<()> {
-        Tun::create_named()
+    pub fn create_numbered(device_num: u32) -> io::Result<()> {
+        Tun::create_numbered(device_num)
+    }
+
+    #[inline]
+    pub fn destroy(if_name: Interface) -> io::Result<()> {
+        Tun::destroy(if_name)
+    }
+
+    #[inline]
+    pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
+        Tun::destroy_numbered(device_num)
     }
 
     #[inline]
@@ -56,10 +66,17 @@ impl TunImpl {
         Tun::exists(if_name)
     }
 
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        Tun::exists_numbered(device_num)
+    }
+
     #[cfg(feature = "portable-racy")]
     #[inline]
     pub fn open(device_num: u32) -> io::Result<Self> {
-        Tun::open(device_num)
+        Ok(Self {
+            tun: Tun::open(device_num)?,
+        })
     }
 
     #[inline]
@@ -95,8 +112,8 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn state(&self, state: DeviceState) -> io::Result<DeviceState> {
-        self.tun.state(state)
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.tun.state()
     }
 
     #[inline]
@@ -179,6 +196,11 @@ impl TapImpl {
     #[inline]
     pub fn name(&self) -> io::Result<Interface> {
         self.tap.name()
+    }
+
+    #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.tap.state()
     }
 
     #[inline]

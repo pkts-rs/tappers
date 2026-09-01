@@ -63,7 +63,13 @@ impl Tap {
         self.inner.name()
     }
 
-    /// Sets the adapter state of the TAP device (e.g. "up" or "down").
+    /// Retrieves the current adapter state of the TAP device (e.g. "UP" or "DOWN").
+    #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.inner.state()
+    }
+
+    /// Sets the adapter state of the TAP device (e.g. "UP" or "DOWN").
     #[inline]
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.inner.set_state(state)
@@ -143,7 +149,7 @@ impl AsRawFd for Tap {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for Tap {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.inner.as_fd()
     }
 }

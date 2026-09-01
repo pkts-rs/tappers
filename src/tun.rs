@@ -59,7 +59,7 @@ impl Tun {
     /// 
     /// The created TUN device may subsequently be opened using [`Tun::open`] or [`Tun::new_named`]. The created TUN
     /// device is persistent until OS reboot unless it is explicitly destroyed.
-    #[cfg(all(not(target_os = "macos"), not(target_os = "openbsd"), any(not(target_os = "windows"), feature = "portable-racy")))]
+    #[cfg(not(any(target_os = "macos", target_os = "openbsd", target_os = "windows")))]
     #[inline]
     pub fn create() -> io::Result<Interface> {
         TunImpl::create()
@@ -71,12 +71,10 @@ impl Tun {
     /// A handle to the created TUN device may subsequently be opened using [`Tun::new_numbered`] (or
     /// [`Tun::open`] if the `portable-racy` feature is enabled). The created TUN device is
     /// persistent until OS reboot unless it is explicitly destroyed.
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     #[inline]
-    pub fn create_numbered(device_num: u32) -> io::Result<Self> {
-        Ok(Self {
-            inner: TunImpl::create_numbered(device_num)?,
-        })
+    pub fn create_numbered(device_num: u32) -> io::Result<()> {
+        TunImpl::create_numbered(device_num)
     }
 
     /// Checks to see whether a TUN device of the given name exists.
@@ -85,23 +83,31 @@ impl Tun {
         TunImpl::exists(if_name)
     }
 
+    /// Checks to see whether a TUN device of the given interface number exists.
+    #[inline]
+    pub fn exists_numbered(if_name: Interface) -> io::Result<bool> {
+        TunImpl::exists(if_name)
+    }
+
     /// Destroys the TUN device specified by the given interface name.
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn destroy(if_name: Interface) -> io::Result<()> {
-        TunImpl::destroy()
+        TunImpl::destroy(if_name)
     }
 
     /// Destroys the TUN device specified by the given interface number.
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
-        TunImpl::destroy_numbered()
+        TunImpl::destroy_numbered(device_num)
     }
 
     /// Opens an existing TUN device of the given device number.
     #[cfg(any(target_os = "windows", all(feature = "portable-racy", not(target_os = "macos"))))]
     #[inline]
     pub fn open(device_num: u32) -> io::Result<Self> {
-        TunImpl::open(device_num)
+        Ok(Self {
+            inner: TunImpl::open(device_num)?
+        })
     }
 
     /// Creates a new, unique TUN device and returns an open handle to it.
@@ -109,7 +115,7 @@ impl Tun {
     /// The interface name associated with this TUN device is chosen by the system, and can be
     /// retrieved via the [`name()`](Self::name) method. The created TUN device is not persistent,
     /// meaning that it will be destroyed when the returned `Tun` object goes out of scope.
-    #[cfg(all(not(target_os = "windows"), any(feature = "portable-racy", not(target_os = "openbsd"))))]
+    #[cfg(any(feature = "portable-racy", not(any(target_os = "openbsd", target_os = "windows"))))]
     #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Self {
@@ -122,7 +128,6 @@ impl Tun {
     /// The created TUN device is not persistent, meaning that it will be destroyed when the
     /// returned `Tun` object goes out of scope.
     #[inline]
-    #[cfg(not(target_os = "windows"))]
     pub fn new_numbered(device_num: u32) -> io::Result<Self> {
         Ok(Self {
             inner: TunImpl::new_numbered(device_num)?,
@@ -266,9 +271,9 @@ mod tests {
 
     #[test]
     fn unique_names() {
-        let tun1 = Tun::new().unwrap();
-        let tun2 = Tun::new().unwrap();
-        let tun3 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(5).unwrap();
+        let tun2 = Tun::new_numbered(6).unwrap();
+        let tun3 = Tun::new_numbered(7).unwrap();
 
         let tun1_name = tun1.name().unwrap();
         let tun2_name = tun2.name().unwrap();
@@ -284,8 +289,8 @@ mod tests {
         let tun = Tun::new_numbered(9).unwrap();
         let tun_iface = tun.name().unwrap();
 
-        let name_bytes = tun_iface.name_cstr().to_bytes();
-        assert_eq!(name_bytes[name_bytes.len() - 1], b'9');
+        let name = tun_iface.name();
+        assert_eq!(name.as_encoded_bytes()[name.as_encoded_bytes().len() - 1], b'9');
     }
 
     /*
@@ -320,7 +325,7 @@ mod tests {
 
     #[test]
     fn up_down() {
-        let mut tun1 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(6).unwrap();
 
         tun1.set_up().unwrap();
         tun1.set_down().unwrap();
@@ -328,9 +333,9 @@ mod tests {
 
     #[test]
     fn exists() {
-        let tun1 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(8).unwrap();
         let tun1_name = tun1.name().unwrap();
-        assert!(tun1_name.exists().unwrap());
+        assert!(Tun::exists(tun1_name).unwrap());
     }
 
     #[test]
@@ -343,16 +348,16 @@ mod tests {
 
     #[test]
     fn not_persistent() {
-        let tun1 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(6).unwrap();
 
         let tun1_name = tun1.name().unwrap();
         drop(tun1);
-        assert!(!tun1_name.exists().unwrap());
+        assert!(!Tun::exists(tun1_name).unwrap());
     }
 
     #[test]
     fn nonblocking_switch() {
-        let mut tun1 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(8).unwrap();
 
         assert_eq!(tun1.nonblocking().unwrap(), false);
         tun1.set_nonblocking(true).unwrap();

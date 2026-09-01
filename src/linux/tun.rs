@@ -9,10 +9,11 @@
 // except according to those terms.
 
 use std::ffi::CStr;
+use std::fs::OpenOptions;
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
-use std::{io, ptr};
+use std::{array, io, ptr};
 
 use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
@@ -69,10 +70,10 @@ impl Tun {
         }
 
         let tun = Self { fd };
-        tun.set_persistent()?;
+        tun.set_persistent(true)?;
         drop(tun);
-
-        Ok(Interface::from_raw(req.ifr_name))
+        
+        Ok(unsafe { Interface::from_raw(array::from_fn(|i| req.ifr_name[i] as u8)) })
     }
 
     /// Creates a new persistent TUN device of the given name.
@@ -82,8 +83,8 @@ impl Tun {
     /// function may be used, though it is only supported on certain platforms.
     #[inline]
     pub fn create_named(if_name: Interface) -> io::Result<()> {
-        let tun = Self::new_named(if_name)?;
-        tun.set_persistent()?;
+        let tun = Self::new_named(if_name, true)?;
+        tun.set_persistent(true)?;
         Ok(())
     }
 
@@ -95,16 +96,83 @@ impl Tun {
     /// persistent until OS reboot unless it is explicitly destroyed.
     #[cfg(not(target_os = "macos"))]
     #[inline]
-    pub fn create_numbered(device_num: u32) -> io::Result<Self> {
-        Ok(Self {
-            inner: TunImpl::create_numbered(device_num)?,
-        })
+    pub fn create_numbered(device_num: u32) -> io::Result<()> {
+        let device_string = format!("tun{}", device_num);
+        let if_name = Interface::new(&device_string).unwrap();
+        Self::create_named(if_name)
+    }
+
+    /// Destroys the TUN device specified by the given interface name.
+    #[inline]
+    pub fn destroy(if_name: Interface) -> io::Result<()> {
+        // TODO: switch to RTM_DELLINK in the future
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+        let fd = file.as_raw_fd();
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        unsafe {
+            if libc::ioctl(fd, TUNSETIFF, &raw mut req) < 0 {
+                return Err(io::Error::last_os_error().into());
+            }
+
+            if libc::ioctl(fd, TUNSETPERSIST, 0 as libc::c_int) < 0 {
+                return Err(io::Error::last_os_error().into());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Destroys the TUN device specified by the given interface number.
+    #[inline]
+    pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
+        let device_string = format!("tun{}", device_num);
+        let if_name = Interface::new(&device_string).unwrap();
+        Self::destroy(if_name)
+    }
+
+    #[inline]
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+        let fd = file.as_raw_fd();
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        let res = unsafe { libc::ioctl(fd, libc::SIOCGIFINDEX, &raw mut req) };
+        let err = io::Error::last_os_error();
+        if res == 0 {
+            Ok(true)
+        } else if matches!(err.raw_os_error(), Some(libc::ENODEV)) {
+            Ok(false)
+        } else {
+            Err(err)
+        }
+    }
+
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        let device_string = format!("tun{}", device_num);
+        let if_name = Interface::new(&device_string).unwrap();
+        Self::exists(if_name)
     }
 
     /// Opens an existing TUN device of the given name.
     #[cfg(feature = "portable-racy")]
     #[inline]
-    pub fn open(if_name: Interface) -> io::Result<Self> {
+    pub fn open_named(if_name: Interface) -> io::Result<Self> {
         let flags = libc::IFF_TUN | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
@@ -133,6 +201,15 @@ impl Tun {
         }
 
         Ok(Self { fd })
+    }
+
+    /// Opens an existing TUN device of the given name.
+    #[cfg(feature = "portable-racy")]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        let device_string = format!("tun{}", device_num);
+        let if_name = Interface::new(&device_string).unwrap();
+        Self::open_named(if_name)
     }
 
     /// Creates a new, unique TUN device and returns a handle to it.
@@ -207,8 +284,8 @@ impl Tun {
     /// changed via a call to [`Tun::set_persistent`].
     #[inline]
     pub fn new_numbered(device_num: u32, exclusive: bool) -> io::Result<Self> {
-        let label = format!("tun{}\0", n).into_bytes();
-        let if_name = Interface::from_raw(array::from_fn(|i| label.get(i).unwrap_or(0x00)));
+        let device_string = format!("tun{}", device_num);
+        let if_name = Interface::new(&device_string).unwrap();
         Self::new_named(if_name, exclusive)
     }
 
@@ -247,7 +324,7 @@ impl Tun {
 
         unsafe {
             match libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) {
-                0.. => Ok(req.ifr_ifru.ifru_flags & IFF_PERSIST > 0),
+                0.. => Ok(req.ifr_ifru.ifru_flags & (IFF_PERSIST as i16) > 0),
                 _ => Err(io::Error::last_os_error()),
             }
         }
@@ -344,24 +421,6 @@ impl Tun {
         match res {
             0 => Ok(()),
             _ => Err(err),
-        }
-    }
-
-    #[inline]
-    pub fn state(&self, state: DeviceState) -> io::Result<DeviceState> {
-        let mut req = libc::ifreq {
-            ifr_name: [0; 16],
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
-        };
-
-        if unsafe { libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        if unsafe { req.ifr_ifru.ifru_flags & (libc::IFF_UP as i16) > 0 } {
-            Ok(DeviceState::Up)
-        } else {
-            Ok(DeviceState::Down)
         }
     }
 

@@ -39,26 +39,30 @@ pub struct TunAdapter {
 }
 
 impl TunAdapter {
-    /// Creates a new TUN adapter.
-    ///
-    /// The TUN interface will be destroyed when the `TunAdapter` created by this method is
-    /// dropped.
-    pub fn create(if_name: Interface) -> Result<Self, io::Error> {
+    /// Creates a new TUN adapter of the specified interface name.
+    pub fn new_named(if_name: Interface) -> Result<Self, io::Error> {
         let wintun = WINTUN_API.get_or_try_init(Wintun::new)?;
 
-        let tunnel_type = "Tappers";
+        let tunnel_type = "Wintun";
 
         let name_utf16: Vec<u16> = if_name.name().encode_wide().collect();
         let type_utf16: Vec<u16> = tunnel_type.encode_utf16().collect();
         let guid = Self::generate_guid(if_name, tunnel_type);
 
         let adapter = wintun.create_adapter(&name_utf16, &type_utf16, guid)?;
-
+        
         Ok(Self {
             adapter,
             if_name,
             wintun,
         })
+    }
+
+    /// Creates a new TUN adapter of the specified device number.
+    pub fn new_numbered(device_num: u32) -> Result<Self, io::Error> {
+        let device_string = format!("tun{}", device_num);
+        let if_name = Interface::new(&device_string).unwrap();
+        Self::new_named(if_name)
     }
 
     /// Opens an existing TUN adapter.

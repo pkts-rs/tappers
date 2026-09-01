@@ -159,6 +159,11 @@ impl TapImpl {
     }
 
     #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.tap.state()
+    }
+
+    #[inline]
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tap.set_state(state)
     }

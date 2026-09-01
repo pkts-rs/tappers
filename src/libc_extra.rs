@@ -31,6 +31,11 @@ extern "C" {
 #[cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "macos"))]
 pub const SCOPE6_ID_MAX: usize = 16;
 
+#[cfg(target_os = "netbsd")]
+#[allow(unused)]
+pub const TAPGIFNAME: libc::c_ulong = 0x40206500;
+
+
 #[allow(unused)]
 pub const IOCPARM_MASK: u64 = 0x1fff; // parameter length, at most 13 bits
 #[allow(unused)]

@@ -8,9 +8,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::fs::{File, OpenOptions};
 use std::net::IpAddr;
+use std::os::fd::{FromRawFd, IntoRawFd};
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
+use std::path::PathBuf;
 use std::{array, io, ptr};
 
 use crate::RawFd;
@@ -43,18 +46,16 @@ impl Tun {
     #[cfg(not(target_os = "openbsd"))]
     #[inline]
     pub fn create() -> io::Result<Interface> {
-        const CLONE_DEVICE: &[u8] = b"tun\0";
-
         let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
         if inet_fd < 0 {
             return Err(io::Error::last_os_error());
         }
 
+        let if_name = Interface::new("tun").unwrap();
         let mut req = libc::ifreq {
-            ifr_name: [0x00; 16],
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_data: ptr::null_mut() },
         };
-        req.ifr_name[..CLONE_DEVICE.len()].copy_from_slice(CLONE_DEVICE);
 
         // FreeBSD and DragonFly BSD return ENXIO ("Device not configured") for SIOCIFCREATE and
         // use SIOCIFCREATE2 instead within their `ifconfig` implementation. It passes no argument
@@ -73,7 +74,7 @@ impl Tun {
         }
 
         Self::close_fd(inet_fd);
-        Ok(Interface::from_raw(req.ifr_name))
+        Ok(unsafe { Interface::from_raw(array::from_fn(|i| req.ifr_name[i] as u8)) })
     }
 
     /// Creates a new TUN device of the given name.
@@ -93,11 +94,21 @@ impl Tun {
         }
 
         let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_data: ptr::null_mut() },
         };
 
-        if unsafe { libc::ioctl(inet_fd, SIOCIFCREATE, ptr::addr_of_mut!(req)) } != 0 {
+        // FreeBSD and DragonFly BSD return ENXIO ("Device not configured") for SIOCIFCREATE and
+        // use SIOCIFCREATE2 instead within their `ifconfig` implementation. It passes no argument
+        // in the `ifr_ifru` field.
+        #[cfg(not(any(target_os = "dragonfly", target_os = "freebsd")))]
+        #[cfg(not(doc))]
+        const IOCTL_CREATE: u64 = SIOCIFCREATE;
+        #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
+        #[cfg(not(doc))]
+        const IOCTL_CREATE: u64 = SIOCIFCREATE2;
+
+        if unsafe { libc::ioctl(inet_fd, IOCTL_CREATE, ptr::addr_of_mut!(req)) } != 0 {
             let err = io::Error::last_os_error();
             Self::close_fd(inet_fd);
             return Err(err);
@@ -114,9 +125,8 @@ impl Tun {
     /// (or [`Tun::open_numbered`] if the `portable-racy` feature is enabled). The created TUN
     /// device is persistent until OS reboot unless it is explicitly destroyed.
     #[inline]
-    pub fn create_numbered(device_num: u32) -> io::Result<Self> {
-        let label = format!("tun{}\0", n).into_bytes();
-        let if_name = Interface::from_raw(array::from_fn(|i| label.get(i).unwrap_or(0x00)));
+    pub fn create_numbered(device_num: u32) -> io::Result<()> {
+        let if_name = Interface::new(format!("tun{}", device_num)).unwrap();
         Self::create_named(if_name)
     }
 
@@ -124,21 +134,28 @@ impl Tun {
     #[cfg(feature = "portable-racy")]
     #[inline]
     pub fn open(device_num: u32) -> io::Result<Self> {
-        let label = format!("tun{}\0", n).into_bytes();
-        let if_name = Interface::from_raw(array::from_fn(|i| label.get(i).unwrap_or(0x00)));
+        let if_name = Interface::new(format!("tun{}", device_num)).unwrap();
 
         if &if_name.name_raw()[..3] != b"tun" || !matches!(if_name.name_raw()[3], b'0'..=b'9') {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "non-TUN interface name provided"))
         }
 
         let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_data: ptr::null_mut() },
         };
 
-        // Check to make sure the device exists first (otherwise we'll be creating a new device).
-        if unsafe { libc::ioctl(self.fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        if sockfd < 0 {
             return Err(io::Error::last_os_error())
+        }
+
+        // Check to make sure the device exists first (otherwise we'll be creating a new device).
+        let res = unsafe { libc::ioctl(sockfd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) };
+        let err = io::Error::last_os_error();
+        let _ = unsafe { libc::close(sockfd) };
+        if res != 0 {
+            return Err(err)
         }
 
         // Note: this is a TOCTOU race. If another thread or process destroys the device after the
@@ -147,14 +164,43 @@ impl Tun {
         // *BSD operating systems provide no mechanism for accomplishing this in a race-free manner.
 
         // TODO: unify `ErrorKind`s returned
-        let fd = unsafe { libc::open(if_name.name(), libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        let tun = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(PathBuf::from("/dev").join(if_name.name()))?;
 
-        Ok(Self { fd })
+        Ok(Self { fd: tun.into_raw_fd() })
     }
 
+    /// Destroys the TUN device specified by the given interface name.
+    pub fn destroy(if_name: Interface) -> io::Result<()> {
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_data: ptr::null_mut() },
+        };
+
+        let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        if sockfd < 0 {
+            return Err(io::Error::last_os_error())
+        }
+
+        let res = unsafe { libc::ioctl(sockfd, SIOCIFDESTROY, ptr::addr_of_mut!(req)) };
+        let err = io::Error::last_os_error();
+        let _ = unsafe { libc::close(sockfd) };
+        if res < 0 {
+            Err(err)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Destroys the TUN device specified by the given interface number.
+    pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
+        let if_name = Interface::new(format!("tun{}", device_num)).unwrap();
+        Self::destroy(if_name)
+    }
+
+    /// Checks to see whether a TUN device of the given name exists.
     pub fn exists(if_name: Interface) -> io::Result<bool> {
         if &if_name.name_raw()[..3] != b"tun" || !matches!(if_name.name_raw()[3], b'0'..=b'9') {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "non-TUN interface name provided"))
@@ -162,7 +208,7 @@ impl Tun {
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_data: ptr::null_mut() },
         };
 
         let ctrl_fd = Self::ctrl_fd();
@@ -195,23 +241,23 @@ impl Tun {
     #[inline]
     #[cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd"))]
     fn new_impl() -> io::Result<Self> {
-        let tun_ptr = b"/dev/tun\0".as_ptr() as *const libc::c_char;
-        // TODO: unify `ErrorKind`s returned
-        let fd = unsafe { libc::open(tun_ptr, libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
-            let err = io::Error::last_os_error();
 
+        let tun = match OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open("/dev/tun") {
+            Ok(tun) => tun,
             #[cfg(all(target_os = "freebsd", feature = "portable-racy"))]
-            if matches!(err.raw_os_error(), Some(libc::ENOENT)) {
+            Err(e) if matches!(e.raw_os_error(), Some(libc::ENOENT)) => {
                 // net.link.tun.devfs_cloning was set to 0
                 // Fall back to iterating through possible TUN numbers
                 return Self::new_impl_racy();
             }
+            Err(e) => return Err(e),
+        };
 
-            return Err(err);
-        }
 
-        Ok(Self { fd })
+        Ok(Self { fd: tun.into_raw_fd() })
     }
 
     #[cfg(all(target_os = "openbsd", feature = "portable-racy"))]
@@ -220,24 +266,20 @@ impl Tun {
         Self::new_impl_racy()
     }
 
-    #[cfg(all(any(target_os = "openbsd", target_os = "freebsd"), feature = "portable_racy"))]
+    #[cfg(all(any(target_os = "openbsd", target_os = "freebsd"), feature = "portable-racy"))]
     #[inline]
     fn new_impl_racy() -> io::Result<Self> {
-        for i in 0..1000 {
-            let label = format!("/dev/tun{}\0", n).into_bytes();
-            let tun_ptr = tun_path.as_ptr() as *const libc::c_char;
+        for device_num in 0..1000 {
+            let tun = match OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(format!("/dev/tun{}", device_num)) {
+                Ok(tun) => tun,
+                Err(e) if matches!(e.raw_os_error(), Some(libc::EBUSY | libc::EEXIST)) => continue,
+                Err(e) => return Err(e),
+            };
 
-            let fd = unsafe { libc::open(tun_ptr, libc::O_RDWR | libc::O_CLOEXEC) };
-            if fd < 0 {
-                let err = io::Error::last_os_error();
-                if matches!(err.raw_os_error(), Some(libc::EBUSY | libc::EEXIST)) {
-                    continue;
-                }
-
-                return Err(err);
-            }
-
-            return Ok(Self { fd });
+            return Ok(Self { fd: tun.into_raw_fd() });
         }
 
         Err(io::Error::new(
@@ -256,13 +298,12 @@ impl Tun {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "non-TUN interface name provided"))
         }
 
-        // TODO: unify `ErrorKind`s returned
-        let fd = unsafe { libc::open(if_name.name(), libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        let tun = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(PathBuf::from("/dev").join(if_name.name()))?;
 
-        Ok(Self { fd })
+        Ok(Self { fd: tun.into_raw_fd() })
     }
 
     /// Opens or creates a TUN device of the given device number, returning an open handle to it.
@@ -271,8 +312,7 @@ impl Tun {
     /// returned `Tun` object goes out of scope.
     #[inline]
     pub fn new_numbered(device_num: u32) -> io::Result<Self> {
-        let label = format!("tun{}\0", n).into_bytes();
-        let if_name = Interface::from_raw(array::from_fn(|i| label.get(i).unwrap_or(0x00)));
+        let if_name = Interface::new(format!("tun{}", device_num)).unwrap();
         Self::new_named(if_name)
     }
 
@@ -292,49 +332,6 @@ impl Tun {
 
             Ok(Interface::from_raw(name))
         }
-    }
-
-    /*
-    #[cfg(target_os = "dragonfly")]
-    fn tun_devname(tun_fd: RawFd) -> io::Result<Interface> {
-        unsafe {
-            let mut name = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
-            if fdevname_r(
-                tun_fd,
-                name.as_mut_ptr() as *mut libc::c_char,
-                Interface::MAX_INTERFACE_NAME_LEN as i32,
-            ) != 0
-            {
-                return Err(io::Error::last_os_error());
-            }
-
-            Ok(Interface::from_raw(name))
-        }
-    }
-    */
-
-    /// Opens or creates a TUN device of the given number.
-    #[inline]
-    pub fn new_numbered(tun_number: u32) -> io::Result<Self> {
-        Self::new_numbered_impl(tun_number, false)
-    }
-
-    #[inline]
-    fn new_numbered_impl(tun_number: u32, unique: bool) -> io::Result<Self> {
-        // "tun" + u32 + \0 won't overflow IFNAMSIZ
-        let tun_number = tun_number.to_string();
-        let tun_name = [b"tun", tun_number.as_bytes()].concat();
-
-        let iface = unsafe {
-            Interface::from_raw(array::from_fn(|i| {
-                if i < tun_name.len() {
-                    tun_name[i]
-                } else {
-                    0
-                }
-            }))
-        };
-        Self::new_named_impl(iface, unique)
     }
 
     /// Retrieves the network-layer addresses assigned to the interface.
@@ -363,7 +360,47 @@ impl Tun {
     /// Retrieves the interface name associated with the TUN device.
     #[inline]
     pub fn name(&self) -> io::Result<Interface> {
-        Ok(self.iface)
+        self.name_impl()
+    }
+
+    #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
+    pub fn name_impl(&self) -> io::Result<Interface> {
+        const BUFLEN: usize = Interface::MAX_INTERFACE_NAME_LEN + 1;
+        let mut buf = [0u8; BUFLEN];
+        let res = unsafe { fdevname_r(self.fd, buf.as_mut_ptr().cast::<libc::c_char>(), BUFLEN as i32) };
+        if res.is_null() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "unknown error in fdevname_r()"))
+        } else {
+            return Ok(unsafe { Interface::from_raw(buf) })
+        }
+    }
+
+    #[cfg(any(target_os = "netbsd"))]
+    pub fn name_impl(&self) -> io::Result<Interface> {
+        let mut req = libc::ifreq {
+            ifr_name: [0i8; _],
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_data: ptr::null_mut() },
+        };
+
+        let res = unsafe { libc::ioctl(self.fd, TAPGIFNAME, &raw mut req) };
+        if res != 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(unsafe { Interface::from_raw(array::from_fn(|i| req.ifr_name[i] as u8)) })
+        }
+    }
+
+    #[cfg(any(target_os = "openbsd"))]
+    pub fn name_impl(&self) -> io::Result<Interface> {
+        let mut stats: libc::stat = unsafe { std::mem::zeroed() };
+
+        let res = unsafe { libc::fstat(self.fd, &raw mut stats) };
+        if res < 0 {
+            return io::Error::last_os_error()
+        }
+
+        let minor_number = unsafe { libc::minor(stats.st_rdev) };
+        Ok(Interface::new(format!("tun{}", minor_number)).unwrap())
     }
 
     /// Retrieves the current state of the TUN device (i.e. "up" or "down").
@@ -372,7 +409,7 @@ impl Tun {
         let ctrl_fd = Self::ctrl_fd();
 
         let mut req = ifreq_empty();
-        req.ifr_name = self.iface.name_raw_char();
+        req.ifr_name = self.name()?.name_raw_char();
 
         if unsafe { libc::ioctl(ctrl_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             let err = io::Error::last_os_error();
@@ -400,7 +437,7 @@ impl Tun {
         let ctrl_fd = Self::ctrl_fd();
 
         let mut req = ifreq_empty();
-        req.ifr_name = self.iface.name_raw_char();
+        req.ifr_name = self.name()?.name_raw_char();
 
         if unsafe { libc::ioctl(ctrl_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
             let err = io::Error::last_os_error();
@@ -607,16 +644,6 @@ impl Tun {
     }
 
     #[inline]
-    fn destroy_iface(fd: RawFd, iface: Interface) {
-        let mut req = ifreq_empty();
-        req.ifr_name = iface.name_raw_char();
-
-        unsafe {
-            debug_assert_eq!(libc::ioctl(fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)), 0);
-        }
-    }
-
-    #[inline]
     fn ctrl_fd() -> RawFd {
         let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
 
@@ -634,7 +661,7 @@ impl Tun {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for Tun {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         unsafe { BorrowedFd::borrow_raw(self.fd) }
     }
 }
@@ -648,12 +675,6 @@ impl AsRawFd for Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
-        Self::close_fd(self.fd);
-
-        if !self.persistent {
-            let ctrl_fd = Self::ctrl_fd();
-            Self::destroy_iface(ctrl_fd, self.iface);
-            Self::close_fd(ctrl_fd);
-        }
+        unsafe { File::from_raw_fd(self.fd) };
     }
 }

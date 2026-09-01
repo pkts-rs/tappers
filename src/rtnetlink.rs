@@ -799,7 +799,7 @@ impl<'a> NlmsgGetAddressRef<'a> {
     }
 
     #[inline]
-    pub fn attrs(&self) -> AddressAttrIter {
+    pub fn attrs(&self) -> AddressAttrIter<'_> {
         AddressAttrIter::new(self.attr_data)
     }
 }

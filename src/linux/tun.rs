@@ -9,8 +9,9 @@
 // except according to those terms.
 
 use std::ffi::CStr;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::net::IpAddr;
+use std::os::fd::{FromRawFd, IntoRawFd};
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 use std::{array, io, ptr};
@@ -144,7 +145,7 @@ impl Tun {
             .read(true)
             .write(true)
             .open("/dev/net/tun")?;
-        let fd = file.as_raw_fd();
+        let fd = file.into_raw_fd();
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_char(),
@@ -153,6 +154,7 @@ impl Tun {
 
         let res = unsafe { libc::ioctl(fd, libc::SIOCGIFINDEX, &raw mut req) };
         let err = io::Error::last_os_error();
+        let _ = unsafe { File::from_raw_fd(fd) };
         if res == 0 {
             Ok(true)
         } else if matches!(err.raw_os_error(), Some(libc::ENODEV)) {

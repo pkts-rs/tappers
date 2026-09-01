@@ -336,6 +336,8 @@ mod tests {
         let tun1 = Tun::new_numbered(8).unwrap();
         let tun1_name = tun1.name().unwrap();
         assert!(Tun::exists(tun1_name).unwrap());
+        drop(tun1);
+        assert!(!Tun::exists(tun1_name).unwrap());
     }
 
     #[test]

@@ -102,25 +102,6 @@ impl Tap {
         })
     }
 
-    /// Gets the name of the device that `tap_fd` is connected to.
-    #[cfg(target_os = "freebsd")]
-    fn tap_devname(tap_fd: RawFd) -> io::Result<Interface> {
-        unsafe {
-            let mut name = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
-            if fdevname_r(
-                tap_fd,
-                name.as_mut_ptr() as *mut libc::c_char,
-                Interface::MAX_INTERFACE_NAME_LEN as i32,
-            )
-            .is_null()
-            {
-                return Err(io::Error::last_os_error());
-            }
-
-            Ok(Interface::from_raw(name))
-        }
-    }
-
     fn new_from_loop() -> io::Result<Self> {
         // Some BSD variants have no support for auto-selection of an unused TAP number, so we need
         // to loop here.
@@ -266,31 +247,30 @@ impl Tap {
 
     #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
     pub fn name_impl(&self) -> io::Result<Interface> {
-        const BUFLEN: usize = Interface::MAX_INTERFACE_NAME_LEN + 1;
+        #[cfg(target_os = "dragonfly")]
+        let buflen = (Interface::MAX_INTERFACE_NAME_LEN + 1) as libc::size_t;
+        #[cfg(target_os = "freebsd")]
+        let buflen = (Interface::MAX_INTERFACE_NAME_LEN + 1) as i32;
+
         let mut buf = [0u8; BUFLEN];
         let res = unsafe {
             fdevname_r(
                 self.fd,
                 buf.as_mut_ptr().cast::<libc::c_char>(),
-                BUFLEN as i32,
+                buflen,
             )
         };
-        #[cfg(target_os = "freebsd")]
-        let is_err = res.is_null();
-        #[cfg(target_os = "dragonfly")]
-        let is_err = res != 0;
 
+        #[cfg(target_os = "dragonfly")]
+        if res != 0 {
+            return Err(io::Error::from_raw_os_error(res));
+        }
         #[cfg(target_os = "freebsd")]
         if res.is_null() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "unknown error in fdevname_r()",
             ));
-        }
-
-        #[cfg(target_os = "dragonfly")]
-        if res != 0 {
-            return Err(io::Error::from_raw_os_error(res));
         }
 
         Ok(unsafe { Interface::from_raw(buf) })

@@ -310,7 +310,7 @@ impl Tun {
                 .open(format!("/dev/tun{}", device_num))
             {
                 Ok(tun) => tun,
-                Err(e) if matches!(e.raw_os_error(), Some(libc::EBUSY | libc::EEXIST)) => continue,
+                Err(e) if matches!(e.raw_os_error(), Some(libc::BUSY | libc::EEXIST)) => continue,
                 Err(e) => return Err(e),
             };
 
@@ -389,23 +389,33 @@ impl Tun {
 
     #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
     pub fn name_impl(&self) -> io::Result<Interface> {
-        const BUFLEN: usize = Interface::MAX_INTERFACE_NAME_LEN + 1;
+        #[cfg(target_os = "dragonfly")]
+        let buflen = (Interface::MAX_INTERFACE_NAME_LEN + 1) as libc::size_t;
+        #[cfg(target_os = "freebsd")]
+        let buflen = (Interface::MAX_INTERFACE_NAME_LEN + 1) as i32;
+
         let mut buf = [0u8; BUFLEN];
         let res = unsafe {
             fdevname_r(
                 self.fd,
                 buf.as_mut_ptr().cast::<libc::c_char>(),
-                BUFLEN as i32,
+                buflen,
             )
         };
+
+        #[cfg(target_os = "dragonfly")]
+        if res != 0 {
+            return Err(io::Error::from_raw_os_error(res));
+        }
+        #[cfg(target_os = "freebsd")]
         if res.is_null() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "unknown error in fdevname_r()",
             ));
-        } else {
-            return Ok(unsafe { Interface::from_raw(buf) });
         }
+
+        Ok(unsafe { Interface::from_raw(buf) })
     }
 
     #[cfg(any(target_os = "netbsd"))]

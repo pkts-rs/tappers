@@ -1258,9 +1258,7 @@ impl Interface {
             return Err(err);
         }
 
-        let mut buf = Vec::<u8>::new();
-        buf.reserve_exact(NETLINK_MAX_RECV);
-
+        let mut buf = vec![0u8; NETLINK_MAX_RECV];
         let len = unsafe {
             libc::recv(
                 fd,
@@ -1521,7 +1519,7 @@ impl Interface {
         };
         let local_len = mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t;
 
-        if unsafe { libc::bind(fd, ptr::addr_of!(local) as *const libc::sockaddr, local_len) } < 0 {
+        if unsafe { libc::bind(fd, (&raw const local).cast::<libc::sockaddr>(), local_len) } < 0 {
             let err = io::Error::last_os_error();
             Self::close_fd(fd);
             return Err(err);
@@ -1544,7 +1542,7 @@ impl Interface {
         let mut req_bytes = req.serialize();
 
         let mut iov = libc::iovec {
-            iov_base: req_bytes.as_mut_ptr() as *mut libc::c_void,
+            iov_base: req_bytes.as_mut_ptr().cast::<libc::c_void>(),
             iov_len: req_bytes.len(),
         };
 

@@ -9,10 +9,10 @@
 // except according to those terms.
 
 use std::ffi::CStr;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 use std::{array, io, ptr};
 
 use crate::RawFd;

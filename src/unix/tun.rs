@@ -15,6 +15,7 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd};
 use std::path::PathBuf;
 
 #[cfg(not(target_os = "openbsd"))]
+use std::array;
 use std::{io, ptr};
 
 use crate::RawFd;

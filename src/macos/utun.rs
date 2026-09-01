@@ -62,7 +62,7 @@ impl Utun {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -132,7 +132,7 @@ impl Utun {
 
     #[inline]
     fn new_internal(sc_unit: u32) -> io::Result<Self> {
-        let fd = unsafe { libc::socket(libc::AF_SYSTEM, libc::SOCK_DGRAM, libc::SYSPROTO_CONTROL) };
+        let fd = unsafe { libc::socket(libc::AF_SYSTEM, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, libc::SYSPROTO_CONTROL) };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -399,7 +399,7 @@ impl Utun {
 
     /*
     fn delete_all_routes(&self) -> io::Result<()> {
-        let route_fd = unsafe { libc::socket(libc::PF_ROUTE, libc::SOCK_RAW, 0) };
+        let route_fd = unsafe { libc::socket(libc::PF_ROUTE, libc::SOCK_RAW | libc::SOCK_CLOEXEC, 0) };
         if route_fd < 0 {
             return Err(io::Error::last_os_error())
         }

@@ -473,7 +473,7 @@ impl Tap {
 
     #[inline]
     fn ctrl_fd() -> RawFd {
-        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
 
         debug_assert!(fd >= 0);
         fd

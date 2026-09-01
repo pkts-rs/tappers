@@ -99,7 +99,7 @@ impl FethTap {
             ));
         }
 
-        let ndrv_fd = unsafe { libc::socket(AF_NDRV, libc::SOCK_RAW, 0) };
+        let ndrv_fd = unsafe { libc::socket(AF_NDRV, libc::SOCK_RAW | libc::SOCK_CLOEXEC, 0) };
         if ndrv_fd < 0 {
             return Err(io::Error::last_os_error());
         }

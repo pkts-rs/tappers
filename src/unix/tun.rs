@@ -48,7 +48,7 @@ impl Tun {
     #[cfg(not(target_os = "openbsd"))]
     #[inline]
     pub fn create() -> io::Result<Interface> {
-        let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if inet_fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -95,7 +95,7 @@ impl Tun {
             ));
         }
 
-        let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, libc::SOCK_CLOEXEC) };
+        let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if inet_fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -159,7 +159,7 @@ impl Tun {
             },
         };
 
-        let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if sockfd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -197,7 +197,7 @@ impl Tun {
             },
         };
 
-        let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if sockfd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -685,7 +685,7 @@ impl Tun {
 
     #[inline]
     fn ctrl_fd() -> RawFd {
-        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
 
         debug_assert!(fd >= 0);
         fd

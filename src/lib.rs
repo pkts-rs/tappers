@@ -824,8 +824,8 @@ impl Interface {
             let fd = unsafe {
                 libc::socket(
                     libc::AF_NETLINK,
-                    libc::SOCK_RAW,
-                    libc::NETLINK_ROUTE | libc::SOCK_CLOEXEC,
+                    libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+                    libc::NETLINK_ROUTE,
                 )
             };
             if fd < 0 {
@@ -1181,8 +1181,8 @@ impl Interface {
         let fd = unsafe {
             libc::socket(
                 libc::AF_NETLINK,
-                libc::SOCK_RAW,
-                libc::NETLINK_ROUTE | libc::SOCK_CLOEXEC,
+                libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+                libc::NETLINK_ROUTE,
             )
         };
         if fd < 0 {
@@ -1374,7 +1374,7 @@ impl Interface {
                     ifra_vhid: 0,
                 };
 
-                let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+                let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
                 if inet_fd < 0 {
                     return Err(io::Error::last_os_error());
                 }
@@ -1468,7 +1468,7 @@ impl Interface {
                     ifra_vhid: 0,
                 };
 
-                let inet6_fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM, 0) };
+                let inet6_fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
                 if inet6_fd < 0 {
                     return Err(io::Error::last_os_error());
                 }
@@ -1506,7 +1506,7 @@ impl Interface {
             IpAddr::V6(_) => (libc::AF_INET6, 64),
         };
 
-        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
+        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW | libc::SOCK_CLOEXEC, libc::NETLINK_ROUTE) };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1623,7 +1623,7 @@ impl Interface {
     fn remove_addr_impl(&self, addr: IpAddr) -> io::Result<()> {
         match addr {
             IpAddr::V4(v4_addr) => {
-                let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+                let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
                 if inet_fd < 0 {
                     return Err(io::Error::last_os_error());
                 }
@@ -1660,7 +1660,7 @@ impl Interface {
                 }
             }
             IpAddr::V6(v6_addr) => {
-                let inet6_fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM, 0) };
+                let inet6_fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
                 if inet6_fd < 0 {
                     return Err(io::Error::last_os_error());
                 }

@@ -338,10 +338,14 @@ impl Tun {
             ));
         }
 
+        let path = PathBuf::from("/dev").join(if_name.name());
+
+        panic!("{}", path);
+
         let tun = OpenOptions::new()
             .read(true)
             .write(true)
-            .open(PathBuf::from("/dev").join(if_name.name()))?;
+            .open(path)?;
 
         Ok(Self {
             fd: tun.into_raw_fd(),

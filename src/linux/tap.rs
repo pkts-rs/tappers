@@ -167,7 +167,8 @@ impl Tap {
             },
         };
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let ctrl_fd =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if ctrl_fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -220,7 +221,8 @@ impl Tap {
             }
         }
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let ctrl_fd =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if ctrl_fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -243,7 +245,8 @@ impl Tap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_mtu: 0 },
         };
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let ctrl_fd =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if ctrl_fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -281,7 +284,8 @@ impl Tap {
             },
         };
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let ctrl_fd =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if ctrl_fd < 0 {
             return Err(io::Error::last_os_error());
         }

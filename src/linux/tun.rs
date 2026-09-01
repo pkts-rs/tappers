@@ -140,7 +140,8 @@ impl Tun {
 
     #[inline]
     pub fn exists(if_name: Interface) -> io::Result<bool> {
-        let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let sockfd =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_char(),
@@ -356,7 +357,8 @@ impl Tun {
             },
         };
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let ctrl_fd =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if ctrl_fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -410,7 +412,8 @@ impl Tun {
             }
         }
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let ctrl_fd =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if ctrl_fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -433,7 +436,8 @@ impl Tun {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_mtu: 0 },
         };
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let ctrl_fd =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if ctrl_fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -462,7 +466,8 @@ impl Tun {
             },
         };
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let ctrl_fd =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         if ctrl_fd < 0 {
             return Err(io::Error::last_os_error());
         }

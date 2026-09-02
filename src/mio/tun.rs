@@ -28,10 +28,31 @@ pub struct AsyncTun {
 }
 
 impl AsyncTun {
+    /// Opens an existing TUN device of the given device number.
+    #[cfg(any(
+        target_os = "windows",
+        all(feature = "portable-racy", not(target_os = "macos"))
+    ))]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        let tun = Tun::open(device_num)?;
+        tun.set_nonblocking(true)?;
+
+        // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
+        // implementation so that the descriptor isn't closed twice.
+        let io = unsafe { UdpSocket::from_raw_fd(tun.as_raw_fd()) };
+
+        Ok(Self {
+            tun,
+            io: ManuallyDrop::new(io),
+        })
+    }
+
     /// Creates a new, unique TUN device.
+    #[cfg(any(feature = "portable-racy", not(target_os = "openbsd")))]
     #[inline]
     pub fn new() -> io::Result<Self> {
-        let mut tun = Tun::new()?;
+        let tun = Tun::new()?;
         tun.set_nonblocking(true)?;
 
         // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
@@ -46,8 +67,8 @@ impl AsyncTun {
 
     /// Opens or creates a TUN device of the given name.
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        let mut tun = Tun::new_named(if_name)?;
+    pub fn new_numbered(device_num: u32) -> io::Result<Self> {
+        let tun = Tun::new_numbered(device_num)?;
         tun.set_nonblocking(true)?;
 
         // SAFETY: `AsyncTun` ensures that the RawFd is extracted from `io` in its drop()
@@ -68,19 +89,19 @@ impl AsyncTun {
 
     /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tun.set_state(state)
     }
 
     /// Sets the adapter state of the TUN device to "up".
     #[inline]
-    pub fn set_up(&mut self) -> io::Result<()> {
+    pub fn set_up(&self) -> io::Result<()> {
         self.tun.set_state(DeviceState::Up)
     }
 
     /// Sets the adapter state of the TUN device to "down".
     #[inline]
-    pub fn set_down(&mut self) -> io::Result<()> {
+    pub fn set_down(&self) -> io::Result<()> {
         self.tun.set_state(DeviceState::Down)
     }
 

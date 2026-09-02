@@ -39,14 +39,11 @@ pub struct TunAdapter {
 }
 
 impl TunAdapter {
-    /// Creates a new TUN adapter.
-    ///
-    /// The TUN interface will be destroyed when the `TunAdapter` created by this method is
-    /// dropped.
-    pub fn create(if_name: Interface) -> Result<Self, io::Error> {
+    /// Creates a new TUN adapter of the specified interface name.
+    pub fn new_named(if_name: Interface) -> Result<Self, io::Error> {
         let wintun = WINTUN_API.get_or_try_init(Wintun::new)?;
 
-        let tunnel_type = "Tappers";
+        let tunnel_type = "Wintun";
 
         let name_utf16: Vec<u16> = if_name.name().encode_wide().collect();
         let type_utf16: Vec<u16> = tunnel_type.encode_utf16().collect();
@@ -59,6 +56,13 @@ impl TunAdapter {
             if_name,
             wintun,
         })
+    }
+
+    /// Creates a new TUN adapter of the specified device number.
+    pub fn new_numbered(device_num: u32) -> Result<Self, io::Error> {
+        let device_string = format!("tun{}", device_num);
+        let if_name = Interface::new(&device_string).unwrap();
+        Self::new_named(if_name)
     }
 
     /// Opens an existing TUN adapter.
@@ -154,7 +158,7 @@ impl TunAdapter {
             DeviceState::Down => MIB_IF_ADMIN_STATUS_DOWN,
         };
 
-        let row = MIB_IFROW {
+        let mut row = MIB_IFROW {
             wszName: [0; 256],
             dwIndex: self.if_name.index()?,
             dwType: 0,
@@ -162,7 +166,7 @@ impl TunAdapter {
             dwSpeed: 0,
             dwPhysAddrLen: 0,
             bPhysAddr: [0; 8],
-            dwAdminStatus: admin_status,
+            dwAdminStatus: 0,
             dwOperStatus: 0,
             dwLastChange: 0,
             dwInOctets: 0,
@@ -180,6 +184,13 @@ impl TunAdapter {
             dwDescrLen: 0,
             bDescr: [0; 256],
         };
+
+        let res = unsafe { GetIfEntry(ptr::addr_of_mut!(row)) };
+        if res != 0 {
+            return Err(io::Error::from_raw_os_error(res as i32));
+        }
+
+        row.dwAdminStatus = admin_status;
 
         match unsafe { SetIfEntry(ptr::addr_of!(row)) } {
             0 => Ok(()),
@@ -242,6 +253,7 @@ impl TunAdapter {
     /// `ring_size` indicates the size of the buffer allocated for transmitting and receiving
     /// packets in each session. Its value must be a power of 2 between 0x20000 (128 kiB) and
     /// 0x4000000 (64 MiB), inclusive.
+    #[allow(unused)]
     fn start_sessions(
         &mut self,
         ring_size: u32,

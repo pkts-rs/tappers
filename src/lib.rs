@@ -133,7 +133,13 @@
 // Show required OS/features on docs.rs.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(any(doc, feature = "async-std"))]
+#[cfg(any(
+    doc,
+    all(
+        feature = "async-std",
+        any(not(target_os = "windows"), feature = "wintun")
+    )
+))]
 pub mod async_std;
 #[cfg(any(doc, target_os = "linux"))]
 pub mod linux;
@@ -141,9 +147,15 @@ pub mod linux;
 pub mod macos;
 #[cfg(any(doc, all(feature = "mio", not(target_os = "windows"))))]
 pub mod mio;
-#[cfg(any(doc, feature = "smol"))]
+#[cfg(any(
+    doc,
+    all(feature = "smol", any(not(target_os = "windows"), feature = "wintun"))
+))]
 pub mod smol;
-#[cfg(any(doc, feature = "tokio"))]
+#[cfg(any(
+    doc,
+    all(feature = "tokio", any(not(target_os = "windows"), feature = "wintun"))
+))]
 pub mod tokio;
 #[cfg(any(
     doc,
@@ -809,7 +821,13 @@ impl Interface {
         // However, it looks like doing so is non-trivial; simply pulling out the socket creation
         // from this loop causes an unexpected bug in message parsing.
         for ifa_family in [libc::AF_INET, libc::AF_INET6] {
-            let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
+            let fd = unsafe {
+                libc::socket(
+                    libc::AF_NETLINK,
+                    libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+                    libc::NETLINK_ROUTE,
+                )
+            };
             if fd < 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -1160,7 +1178,13 @@ impl Interface {
         };
         let prefixlen = req.netmask().unwrap_or(default_prefixlen);
 
-        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
+        let fd = unsafe {
+            libc::socket(
+                libc::AF_NETLINK,
+                libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+                libc::NETLINK_ROUTE,
+            )
+        };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1234,9 +1258,7 @@ impl Interface {
             return Err(err);
         }
 
-        let mut buf = Vec::<u8>::new();
-        buf.reserve_exact(NETLINK_MAX_RECV);
-
+        let mut buf = vec![0u8; NETLINK_MAX_RECV];
         let len = unsafe {
             libc::recv(
                 fd,
@@ -1484,7 +1506,13 @@ impl Interface {
             IpAddr::V6(_) => (libc::AF_INET6, 64),
         };
 
-        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
+        let fd = unsafe {
+            libc::socket(
+                libc::AF_NETLINK,
+                libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+                libc::NETLINK_ROUTE,
+            )
+        };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1497,7 +1525,7 @@ impl Interface {
         };
         let local_len = mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t;
 
-        if unsafe { libc::bind(fd, ptr::addr_of!(local) as *const libc::sockaddr, local_len) } < 0 {
+        if unsafe { libc::bind(fd, (&raw const local).cast::<libc::sockaddr>(), local_len) } < 0 {
             let err = io::Error::last_os_error();
             Self::close_fd(fd);
             return Err(err);
@@ -1520,7 +1548,7 @@ impl Interface {
         let mut req_bytes = req.serialize();
 
         let mut iov = libc::iovec {
-            iov_base: req_bytes.as_mut_ptr() as *mut libc::c_void,
+            iov_base: req_bytes.as_mut_ptr().cast::<libc::c_void>(),
             iov_len: req_bytes.len(),
         };
 

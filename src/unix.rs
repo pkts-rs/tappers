@@ -39,20 +39,60 @@ pub(crate) fn ifreq_empty() -> ifreq {
     }
 }
 
+#[repr(transparent)]
 pub(crate) struct TunImpl {
     tun: Tun,
 }
 
 impl TunImpl {
+    #[cfg(not(target_os = "openbsd"))]
+    #[inline]
+    pub fn create() -> io::Result<Interface> {
+        Tun::create()
+    }
+
+    #[inline]
+    pub fn create_numbered(device_num: u32) -> io::Result<()> {
+        Tun::create_numbered(device_num)
+    }
+
+    #[inline]
+    pub fn destroy(if_name: Interface) -> io::Result<()> {
+        Tun::destroy(if_name)
+    }
+
+    #[inline]
+    pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
+        Tun::destroy_numbered(device_num)
+    }
+
+    #[inline]
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        Tun::exists(if_name)
+    }
+
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        Tun::exists_numbered(device_num)
+    }
+
+    #[cfg(feature = "portable-racy")]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        Ok(Self {
+            tun: Tun::open(device_num)?,
+        })
+    }
+
     #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Self { tun: Tun::new()? })
     }
 
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
+    pub fn new_numbered(device_num: u32) -> io::Result<Self> {
         Ok(Self {
-            tun: Tun::new_named(if_name)?,
+            tun: Tun::new_numbered(device_num)?,
         })
     }
 
@@ -77,8 +117,13 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tun.set_state(state)
+    }
+
+    #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.tun.state()
     }
 
     #[inline]
@@ -87,7 +132,7 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.tun.set_nonblocking(nonblocking)
     }
 
@@ -117,7 +162,7 @@ impl AsRawFd for TunImpl {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for TunImpl {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.tun.as_fd()
     }
 }
@@ -160,8 +205,13 @@ impl TapImpl {
     }
 
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tap.set_state(state)
+    }
+
+    #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.tap.state()
     }
 
     #[inline]
@@ -192,7 +242,7 @@ impl TapImpl {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for TapImpl {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.tap.as_fd()
     }
 }

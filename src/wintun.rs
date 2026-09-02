@@ -19,6 +19,7 @@ mod session;
 
 use std::io;
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use adapter::TunAdapter;
 pub use dll::WintunLoggerCallback;
@@ -32,40 +33,66 @@ use crate::{DeviceState, Interface};
 pub(crate) struct TunImpl {
     adapter: TunAdapter,
     session: NonNull<WintunSession>,
+    #[allow(unused)]
     ring_size: u32,
-    nonblocking: bool,
+    nonblocking: AtomicBool,
 }
 
 impl TunImpl {
-    const MAX_TUN_ID: u32 = 1000;
-
-    /// Creates a new, unique TUN device.
-    #[inline]
+    #[cfg(feature = "portable-racy")]
     pub fn new() -> io::Result<Self> {
-        let mut tun_id = 0;
+        const MAX_TUN_ID: u32 = 1000;
+        for tun_id in 0..MAX_TUN_ID {
+            let device_str = format!("tun{}", tun_id);
+            let if_name = Interface::new(&device_str).unwrap();
 
-        let mut adapter = loop {
-            let if_name = format!("Tun{}", tun_id);
-            let iface = Interface::new(&if_name).unwrap();
-
-            if TunAdapter::open(iface).is_err() {
-                match TunAdapter::create(iface) {
-                    Ok(adapter) => break adapter,
-                    Err(e) => {
-                        if e.kind() != io::ErrorKind::AlreadyExists {
-                            return Err(e);
-                        }
+            match TunAdapter::new_named(if_name) {
+                Ok(mut adapter) => match adapter.wintun.start_session(
+                    unsafe { adapter.adapter.as_mut() },
+                    TunSession::DEFAULT_RING_SIZE,
+                ) {
+                    Ok(session) => {
+                        return Ok(Self {
+                            adapter,
+                            session,
+                            ring_size: TunSession::DEFAULT_RING_SIZE,
+                            nonblocking: AtomicBool::new(false),
+                        })
                     }
+                    Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+                    Err(e) => return Err(e),
+                },
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "no unused TUN number could be found for use",
+        ))
+    }
+
+    pub fn new_named(if_name: Interface) -> io::Result<Self> {
+        let mut adapter = match TunAdapter::new_named(if_name) {
+            Ok(adapter) => adapter,
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                // There is a minor race condition where create() fails but another device deletes
+                // its existing open Wintun adapter before open() is called here. In this case, we
+                // pretend that we won the race but that the adapter had a session already attached
+                // to it (hence io::ErrorKind::ResourceBusy).
+                match TunAdapter::open(if_name) {
+                    Ok(adapter) => adapter,
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::ResourceBusy,
+                            "device currently in use",
+                        ))
+                    }
+                    Err(e) => return Err(e),
                 }
             }
-
-            tun_id += 1;
-            if tun_id > Self::MAX_TUN_ID {
-                return Err(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    "no unused adapter could be found",
-                ));
-            }
+            Err(e) => return Err(e),
         };
 
         let session = adapter.wintun.start_session(
@@ -77,44 +104,38 @@ impl TunImpl {
             adapter,
             session,
             ring_size: TunSession::DEFAULT_RING_SIZE,
-            nonblocking: false,
+            nonblocking: AtomicBool::new(false),
         })
     }
 
-    /// Opens or creates a TUN device of the given name.
+    pub fn new_numbered(device_num: u32) -> io::Result<Self> {
+        let device_string = format!("tun{}", device_num);
+        let if_name = Interface::new(&device_string).unwrap();
+        Self::new_named(if_name)
+    }
+
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        match TunAdapter::open(if_name) {
+            Ok(_) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        let mut race_retry = false;
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        let if_name = Interface::new(format!("tun{}", device_num)).unwrap();
+        Self::exists(if_name)
+    }
 
-        let mut adapter = loop {
-            match TunAdapter::open(if_name) {
-                Ok(adapter) => break adapter,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                    match TunAdapter::create(if_name) {
-                        Ok(adapter) => break adapter,
-                        Err(e) => {
-                            if e.kind() != io::ErrorKind::AlreadyExists {
-                                return Err(e);
-                            }
-                        }
-                    }
-                }
-                Err(e) => return Err(e),
-            }
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        let device_string = format!("tun{}", device_num);
+        let if_name = Interface::new(&device_string).unwrap();
+        Self::open_named(if_name)
+    }
 
-            // There is a race condition between the time `open()` and `create()` are called. IF
-            // that race is detected (e.g. `open()` returns NotFound and `create()` returns exists),
-            // we try again.
-            if race_retry {
-                // Only retry once--should be probabilistically sufficient for non-adversarial races
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "TUN interface is both present and absent (race condition)",
-                ));
-            }
-            race_retry = true;
-        };
-
+    pub fn open_named(if_name: Interface) -> io::Result<Self> {
+        let mut adapter = TunAdapter::open(if_name)?;
         let session = adapter.wintun.start_session(
             unsafe { adapter.adapter.as_mut() },
             TunSession::DEFAULT_RING_SIZE,
@@ -124,7 +145,7 @@ impl TunImpl {
             adapter,
             session,
             ring_size: TunSession::DEFAULT_RING_SIZE,
-            nonblocking: false,
+            nonblocking: AtomicBool::new(false),
         })
     }
 
@@ -134,7 +155,12 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.adapter.state()
+    }
+
+    #[inline]
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.adapter.set_state(state)
     }
 
@@ -144,24 +170,26 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
-        self.nonblocking = nonblocking;
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.nonblocking.store(nonblocking, Ordering::Relaxed);
         Ok(())
     }
 
     #[inline]
     pub fn nonblocking(&self) -> io::Result<bool> {
-        Ok(self.nonblocking)
+        Ok(self.nonblocking.load(Ordering::Relaxed))
     }
 
     #[inline]
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        TunSession::send_impl(&self.adapter, self.session.as_ptr(), self.nonblocking, buf)
+        let nonblocking = self.nonblocking.load(Ordering::Relaxed);
+        TunSession::send_impl(&self.adapter, self.session.as_ptr(), nonblocking, buf)
     }
 
     #[inline]
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        TunSession::recv_impl(&self.adapter, self.session.as_ptr(), self.nonblocking, buf)
+        let nonblocking = self.nonblocking.load(Ordering::Relaxed);
+        TunSession::recv_impl(&self.adapter, self.session.as_ptr(), nonblocking, buf)
     }
 
     #[inline]

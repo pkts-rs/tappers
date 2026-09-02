@@ -31,7 +31,13 @@ pub struct RtNetlink {
 
 impl RtNetlink {
     pub fn new() -> io::Result<Self> {
-        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
+        let fd = unsafe {
+            libc::socket(
+                libc::AF_NETLINK,
+                libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+                libc::NETLINK_ROUTE,
+            )
+        };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -799,7 +805,7 @@ impl<'a> NlmsgGetAddressRef<'a> {
     }
 
     #[inline]
-    pub fn attrs(&self) -> AddressAttrIter {
+    pub fn attrs(&self) -> AddressAttrIter<'_> {
         AddressAttrIter::new(self.attr_data)
     }
 }

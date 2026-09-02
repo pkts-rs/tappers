@@ -41,6 +41,7 @@ use windows_sys::Win32::Foundation::HANDLE;
 use crate::AddressInfo;
 
 /// A cross-platform TUN interface, suitable for tunnelling network-layer packets.
+#[repr(transparent)]
 pub struct Tun {
     inner: TunImpl,
 }
@@ -53,7 +54,74 @@ pub struct Tun {
 // Note: Wintun TOCTOU? Only if other interface not created with Wintun but not `tappers`
 
 impl Tun {
-    /// Creates a new, unique TUN device.
+    /// Creates a new persistent TUN device with a unique device number assigned and returns its
+    /// interface name.
+    ///
+    /// The created TUN device may subsequently be opened using [`Tun::open`] or [`Tun::new_named`]. The created TUN
+    /// device is persistent until OS reboot unless it is explicitly destroyed.
+    #[cfg(not(any(target_os = "macos", target_os = "openbsd", target_os = "windows")))]
+    #[inline]
+    pub fn create() -> io::Result<Interface> {
+        TunImpl::create()
+    }
+
+    /// Creates a new persistent TUN device of the given device number, erroring if the device
+    /// already exists.
+    ///
+    /// A handle to the created TUN device may subsequently be opened using [`Tun::new_numbered`] (or
+    /// [`Tun::open`] if the `portable-racy` feature is enabled). The created TUN device is
+    /// persistent until OS reboot unless it is explicitly destroyed.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[inline]
+    pub fn create_numbered(device_num: u32) -> io::Result<()> {
+        TunImpl::create_numbered(device_num)
+    }
+
+    /// Checks to see whether a TUN device of the given name exists.
+    #[inline]
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        TunImpl::exists(if_name)
+    }
+
+    /// Checks to see whether a TUN device of the given interface number exists.
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        TunImpl::exists_numbered(device_num)
+    }
+
+    /// Destroys the TUN device specified by the given interface name.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    pub fn destroy(if_name: Interface) -> io::Result<()> {
+        TunImpl::destroy(if_name)
+    }
+
+    /// Destroys the TUN device specified by the given interface number.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
+        TunImpl::destroy_numbered(device_num)
+    }
+
+    /// Opens an existing TUN device of the given device number.
+    #[cfg(any(
+        target_os = "windows",
+        all(feature = "portable-racy", not(target_os = "macos"))
+    ))]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        Ok(Self {
+            inner: TunImpl::open(device_num)?,
+        })
+    }
+
+    /// Creates a new, unique TUN device and returns an open handle to it.
+    ///
+    /// The interface name associated with this TUN device is chosen by the system, and can be
+    /// retrieved via the [`name()`](Self::name) method. The created TUN device is not persistent,
+    /// meaning that it will be destroyed when the returned `Tun` object goes out of scope.
+    #[cfg(any(
+        feature = "portable-racy",
+        not(any(target_os = "openbsd", target_os = "windows"))
+    ))]
     #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Self {
@@ -61,11 +129,14 @@ impl Tun {
         })
     }
 
-    /// Opens or creates a TUN device of the given name.
+    /// Opens or creates a TUN device of the given device number, returning an open handle to it.
+    ///
+    /// The created TUN device is not persistent, meaning that it will be destroyed when the
+    /// returned `Tun` object goes out of scope.
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
+    pub fn new_numbered(device_num: u32) -> io::Result<Self> {
         Ok(Self {
-            inner: TunImpl::new_named(if_name)?,
+            inner: TunImpl::new_numbered(device_num)?,
         })
     }
 
@@ -75,22 +146,28 @@ impl Tun {
         self.inner.name()
     }
 
-    /// Sets the adapter state of the TUN device (e.g. "up" or "down").
+    /// Sets the adapter state of the TUN device.
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.inner.set_state(state)
     }
 
-    /// Sets the adapter state of the TUN device to "up".
-    #[inline]
-    pub fn set_up(&mut self) -> io::Result<()> {
+    /// Sets the adapter state of the TUN device to `UP`. Equivalent to
+    /// [Tun::set_state(DeviceState::Up)](Tun::set_state).
+    pub fn set_up(&self) -> io::Result<()> {
         self.inner.set_state(DeviceState::Up)
     }
 
-    /// Sets the adapter state of the TUN device to "down".
-    #[inline]
-    pub fn set_down(&mut self) -> io::Result<()> {
+    /// Sets the adapter state of the TUN device to `DOWN`. Equivalent to
+    /// [Tun::set_state(DeviceState::Down)](Tun::set_state).
+    pub fn set_down(&self) -> io::Result<()> {
         self.inner.set_state(DeviceState::Down)
+    }
+
+    /// Retrieves the current adapter state of the TUN device (i.e., `UP` or `DOWN`).
+    #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.inner.state()
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TUN device.
@@ -101,7 +178,7 @@ impl Tun {
 
     /// Sets the blocking mode of the TUN device for reads/writes.
     #[inline]
-    pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.inner.set_nonblocking(nonblocking)
     }
 
@@ -189,7 +266,7 @@ impl AsRawFd for Tun {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for Tun {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.inner.as_fd()
     }
 }
@@ -200,9 +277,9 @@ mod tests {
 
     #[test]
     fn unique_names() {
-        let tun1 = Tun::new().unwrap();
-        let tun2 = Tun::new().unwrap();
-        let tun3 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(5).unwrap();
+        let tun2 = Tun::new_numbered(6).unwrap();
+        let tun3 = Tun::new_numbered(7).unwrap();
 
         let tun1_name = tun1.name().unwrap();
         let tun2_name = tun2.name().unwrap();
@@ -213,6 +290,19 @@ mod tests {
         assert!(tun2_name != tun3_name);
     }
 
+    #[test]
+    fn given_number() {
+        let tun = Tun::new_numbered(9).unwrap();
+        let tun_iface = tun.name().unwrap();
+
+        let name = tun_iface.name();
+        assert_eq!(
+            name.as_encoded_bytes()[name.as_encoded_bytes().len() - 1],
+            b'9'
+        );
+    }
+
+    /*
     #[cfg(target_os = "macos")]
     #[test]
     fn given_name() {
@@ -240,10 +330,11 @@ mod tests {
 
         assert_eq!(chosen_name, tun_iface.name());
     }
+    */
 
     #[test]
     fn up_down() {
-        let mut tun1 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(6).unwrap();
 
         tun1.set_up().unwrap();
         tun1.set_down().unwrap();
@@ -251,9 +342,10 @@ mod tests {
 
     #[test]
     fn exists() {
-        let tun1 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(8).unwrap();
         let tun1_name = tun1.name().unwrap();
-        assert!(tun1_name.exists().unwrap());
+        assert!(Tun::exists(tun1_name).unwrap());
+        drop(tun1);
     }
 
     #[test]
@@ -266,16 +358,17 @@ mod tests {
 
     #[test]
     fn not_persistent() {
-        let tun1 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(6).unwrap();
 
         let tun1_name = tun1.name().unwrap();
         drop(tun1);
-        assert!(!tun1_name.exists().unwrap());
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!Tun::exists(tun1_name).unwrap());
     }
 
     #[test]
     fn nonblocking_switch() {
-        let mut tun1 = Tun::new().unwrap();
+        let tun1 = Tun::new_numbered(8).unwrap();
 
         assert_eq!(tun1.nonblocking().unwrap(), false);
         tun1.set_nonblocking(true).unwrap();

@@ -72,19 +72,19 @@ impl AsyncTap {
 
     /// Sets the adapter state of the TAP device (e.g. "up" or "down").
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tap.set_state(state)
     }
 
     /// Sets the adapter state of the TAP device to "up".
     #[inline]
-    pub fn set_up(&mut self) -> io::Result<()> {
+    pub fn set_up(&self) -> io::Result<()> {
         self.tap.set_state(DeviceState::Up)
     }
 
     /// Sets the adapter state of the TAP device to "down".
     #[inline]
-    pub fn set_down(&mut self) -> io::Result<()> {
+    pub fn set_down(&self) -> io::Result<()> {
         self.tap.set_state(DeviceState::Down)
     }
 

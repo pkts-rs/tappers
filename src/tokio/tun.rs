@@ -32,13 +32,7 @@ struct TunWrapper(Arc<Tun>);
 impl TunWrapper {
     /// Returns a reference to the underlying `Tun` function.
     pub fn get_ref(&self) -> &Tun {
-        self.0.as_ref()
-    }
-
-    /// Returns a reference to the underlying `Tap` function.
-    pub fn get_mut(&mut self) -> &mut Tun {
-        // SAFETY: we never use this within spawn_blocking or similar async contexts
-        Arc::<Tun>::get_mut(&mut self.0).unwrap()
+        &self.0
     }
 }
 
@@ -51,53 +45,99 @@ pub struct AsyncTun {
 }
 
 impl AsyncTun {
+    /// Opens an existing TUN device of the given device number.
+    #[cfg(any(
+        target_os = "windows",
+        all(feature = "portable-racy", not(target_os = "macos"))
+    ))]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        Self::open_impl(device_num)
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn open_impl(device_num: u32) -> io::Result<Self> {
+        let tun = Tun::open(device_num)?;
+        tun.set_nonblocking(true)?;
+
+        Ok(Self {
+            tun: TunWrapper(Arc::new(tun)),
+        })
+    }
+
+    #[cfg(all(
+        feature = "portable-racy",
+        not(any(target_os = "macos", target_os = "windows"))
+    ))]
+    pub fn open_impl(device_num: u32) -> io::Result<Self> {
+        let tun = Tun::open(device_num)?;
+        tun.set_nonblocking(true)?;
+
+        Ok(Self {
+            tun: AsyncFd::new(tun)?,
+        })
+    }
+
     /// Creates a new, unique TUN device.
+    #[cfg(any(
+        feature = "portable-racy",
+        not(any(target_os = "openbsd", target_os = "windows"))
+    ))]
     #[inline]
     pub fn new() -> io::Result<Self> {
         Self::new_impl()
     }
 
-    #[cfg(not(target_os = "windows"))]
-    fn new_impl() -> io::Result<Self> {
-        let mut tun = Tun::new()?;
-        tun.set_nonblocking(true)?;
-
-        Ok(Self {
-            tun: AsyncFd::new(tun)?,
-        })
-    }
-
-    #[cfg(target_os = "windows")]
-    fn new_impl() -> io::Result<Self> {
-        let mut tun = Tun::new()?;
+    #[cfg(all(target_os = "windows", feature = "portable-racy"))]
+    #[inline]
+    pub fn new_impl() -> io::Result<Self> {
+        let tun = Tun::new()?;
         tun.set_nonblocking(true)?;
 
         Ok(Self {
             tun: TunWrapper(Arc::new(tun)),
+        })
+    }
+
+    #[cfg(all(
+        not(target_os = "windows"),
+        any(feature = "portable-racy", not(target_os = "openbsd"))
+    ))]
+    #[inline]
+    pub fn new_impl() -> io::Result<Self> {
+        let tun = Tun::new()?;
+        tun.set_nonblocking(true)?;
+
+        Ok(Self {
+            tun: AsyncFd::new(tun)?,
         })
     }
 
     /// Opens or creates a TUN device of the given name.
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        Self::new_named_impl(if_name)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
-        let mut tun = Tun::new_named(if_name)?;
-
-        Ok(Self {
-            tun: AsyncFd::new(tun)?,
-        })
+    pub fn new_numbered(device_num: u32) -> io::Result<Self> {
+        Self::new_numbered_impl(device_num)
     }
 
     #[cfg(target_os = "windows")]
-    pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
-        let tun = Tun::new_named(if_name)?;
+    #[inline]
+    pub fn new_numbered_impl(device_num: u32) -> io::Result<Self> {
+        let tun = Tun::new_numbered(device_num)?;
+        tun.set_nonblocking(true)?;
 
         Ok(Self {
             tun: TunWrapper(Arc::new(tun)),
+        })
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[inline]
+    pub fn new_numbered_impl(device_num: u32) -> io::Result<Self> {
+        let tun = Tun::new_numbered(device_num)?;
+        tun.set_nonblocking(true)?;
+
+        Ok(Self {
+            tun: AsyncFd::new(tun)?,
         })
     }
 
@@ -109,20 +149,20 @@ impl AsyncTun {
 
     /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
-        self.tun.get_mut().set_state(state)
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
+        self.tun.get_ref().set_state(state)
     }
 
     /// Sets the adapter state of the TUN device to "up".
     #[inline]
-    pub fn set_up(&mut self) -> io::Result<()> {
-        self.tun.get_mut().set_state(DeviceState::Up)
+    pub fn set_up(&self) -> io::Result<()> {
+        self.tun.get_ref().set_state(DeviceState::Up)
     }
 
     /// Sets the adapter state of the TUN device to "down".
     #[inline]
-    pub fn set_down(&mut self) -> io::Result<()> {
-        self.tun.get_mut().set_state(DeviceState::Down)
+    pub fn set_down(&self) -> io::Result<()> {
+        self.tun.get_ref().set_state(DeviceState::Down)
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TUN device.

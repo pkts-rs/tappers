@@ -20,7 +20,7 @@ rustix = { git = "https://github.com/bytecodealliance/rustix", branch = "main" }
 rustix_0_38 = { package = "rustix", git = "https://github.com/nathaniel-bennett/rustix.git", branch = "0.38" }
 
 [features]
-default = []
+default = ["async-std", "mio", "smol", "tokio", "portable-racy", "wintun"]
 # Enables loading of Wintun (default is load-time unless `wintun-runtime` is specified)
 wintun = []
 # Enables loading of tap-windows6 (default is load-time unless `tapwin6-runtime` is specified)
@@ -33,6 +33,9 @@ async-std = ["dep:async-io", "dep:async-std"]
 mio = ["dep:mio"]
 smol = ["dep:async-io", "dep:smol"]
 tokio = ["dep:tokio"]
+# Enables universal cross-platfrom `new()` and `new_named()` implementations that may have a race
+# condition between device creation and attach.
+portable-racy = []
 
 
 [dependencies]

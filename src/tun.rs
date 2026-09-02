@@ -346,6 +346,7 @@ mod tests {
         let tun1_name = tun1.name().unwrap();
         assert!(Tun::exists(tun1_name).unwrap());
         drop(tun1);
+        std::thread::sleep(std::time::Duration::from_millis(100));
         assert!(!Tun::exists(tun1_name).unwrap());
     }
 

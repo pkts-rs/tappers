@@ -28,7 +28,8 @@ use crate::libc_extra::*;
 // We use a custom `iovec` struct here because we don't want to do a *const to *mut conversion
 #[repr(C)]
 #[allow(non_camel_case_types)]
-pub struct iovec_const {
+#[allow(unused)]
+struct iovec_const {
     pub iov_base: *const libc::c_void,
     pub iov_len: libc::size_t,
 }

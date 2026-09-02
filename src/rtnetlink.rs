@@ -92,6 +92,7 @@ impl NetlinkRequest {
                 NlmsgPayload::GetAddress(_) => libc::RTM_GETADDR,
                 NlmsgPayload::DeleteAddress(_) => libc::RTM_DELADDR,
                 NlmsgPayload::NewRoute(_) => libc::RTM_NEWROUTE,
+                NlmsgPayload::GetRoute(_) => libc::RTM_GETROUTE,
                 NlmsgPayload::DeleteRoute(_) => libc::RTM_DELROUTE,
                 NlmsgPayload::NewNeighbor(_) => libc::RTM_NEWNEIGH,
                 NlmsgPayload::DeleteNeighbor(_) => libc::RTM_DELNEIGH,
@@ -124,6 +125,8 @@ pub enum NlmsgPayload {
     DeleteAddress(NlmsgDeleteAddress),
     /// An `RTM_NEWROUTE` request.
     NewRoute(NlmsgNewRoute),
+    /// An `RTM_GETROUTE` request.
+    GetRoute(NlmsgGetRoute),
     /// An `RTM_DELROUTE` request.
     DeleteRoute(NlmsgDeleteRoute),
     /// An `RTM_NEWNEIGH` request.
@@ -136,16 +139,17 @@ impl NlmsgPayload {
     #[inline]
     fn serialize(&self, buf: &mut Vec<u8>) {
         match self {
-            NlmsgPayload::NewAddress(nlmsg_new_address) => nlmsg_new_address.serialize(buf),
-            NlmsgPayload::GetAddress(nlmsg_get_address) => nlmsg_get_address.serialize(buf),
-            NlmsgPayload::DeleteAddress(nlmsg_delete_address) => {
-                nlmsg_delete_address.serialize(buf)
+            NlmsgPayload::NewAddress(new_addr) => new_addr.serialize(buf),
+            NlmsgPayload::GetAddress(get_addr) => get_addr.serialize(buf),
+            NlmsgPayload::DeleteAddress(del_addr) => {
+                del_addr.serialize(buf)
             }
-            NlmsgPayload::NewRoute(nlmsg_new_route) => nlmsg_new_route.serialize(buf),
-            NlmsgPayload::DeleteRoute(nlmsg_delete_route) => nlmsg_delete_route.serialize(buf),
-            NlmsgPayload::NewNeighbor(nlmsg_new_neighbor) => nlmsg_new_neighbor.serialize(buf),
-            NlmsgPayload::DeleteNeighbor(nlmsg_delete_neighbor) => {
-                nlmsg_delete_neighbor.serialize(buf)
+            NlmsgPayload::NewRoute(new_rt) => new_rt.serialize(buf),
+            NlmsgPayload::GetRoute(get_rt) => get_rt.serialize(buf),
+            NlmsgPayload::DeleteRoute(del_rt) => del_rt.serialize(buf),
+            NlmsgPayload::NewNeighbor(new_neigh) => new_neigh.serialize(buf),
+            NlmsgPayload::DeleteNeighbor(del_neigh) => {
+                del_neigh.serialize(buf)
             }
         }
     }
@@ -394,32 +398,120 @@ impl AddressAttr {
 }
 
 #[derive(Clone, Debug)]
+pub struct NlmsgGetRoute {
+    pub family: u8,
+    pub dst_len: u8,
+    pub src_len: u8,
+    pub tos: u8,
+    pub table_id: u8,
+    pub protocol: u8,
+    pub scope: u8,
+    pub route_type: u8,
+    pub flags: u32,
+}
+
+impl NlmsgGetRoute {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        const RTMSG_LEN: usize = mem::size_of::<rtmsg>();
+        const RTMSG_PADDING: usize = NLMSG_ALIGN(RTMSG_LEN) - RTMSG_LEN;
+
+        let route_msg = rtmsg {
+            rtm_family: self.family,
+            rtm_dst_len: self.dst_len,
+            rtm_src_len: self.src_len,
+            rtm_tos: self.tos,
+            rtm_table: self.table_id,
+            rtm_protocol: self.protocol,
+            rtm_scope: self.scope,
+            rtm_type: self.route_type,
+            rtm_flags: self.flags,
+        };
+
+        let rtmsg_bytes: [u8; RTMSG_LEN] = unsafe { mem::transmute(route_msg) };
+        buf.extend(&rtmsg_bytes);
+        buf.extend(&[0u8; RTMSG_PADDING]);
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct NlmsgNewRoute {
-    pub iface_idx: i32,
-    pub state: u16,
-    pub flags: u8,
-    pub arp_type: u8,
+    pub family: u8,
+    pub dst_len: u8,
+    pub src_len: u8,
+    pub tos: u8,
+    pub table_id: u8,
+    pub protocol: u8,
+    pub scope: u8,
+    pub route_type: u8,
+    pub flags: u32,
     pub attrs: Vec<RouteAttr>,
 }
 
 impl NlmsgNewRoute {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        todo!()
+        const RTMSG_LEN: usize = mem::size_of::<rtmsg>();
+        const RTMSG_PADDING: usize = NLMSG_ALIGN(RTMSG_LEN) - RTMSG_LEN;
+
+        let route_msg = rtmsg {
+            rtm_family: self.family,
+            rtm_dst_len: self.dst_len,
+            rtm_src_len: self.src_len,
+            rtm_tos: self.tos,
+            rtm_table: self.table_id,
+            rtm_protocol: self.protocol,
+            rtm_scope: self.scope,
+            rtm_type: self.route_type,
+            rtm_flags: self.flags,
+        };
+
+        let rtmsg_bytes: [u8; RTMSG_LEN] = unsafe { mem::transmute(route_msg) };
+        buf.extend(&rtmsg_bytes);
+        buf.extend(&[0u8; RTMSG_PADDING]);
+
+        for attr in self.attrs.iter() {
+            attr.serialize(buf);
+        }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct NlmsgDeleteRoute {
-    pub iface_idx: i32,
-    pub state: u16,
-    pub flags: u8,
-    pub arp_type: u8,
+    pub family: u8,
+    pub dst_len: u8,
+    pub src_len: u8,
+    pub tos: u8,
+    pub table_id: u8,
+    pub protocol: u8,
+    pub scope: u8,
+    pub route_type: u8,
+    pub flags: u32,
     pub attrs: Vec<RouteAttr>,
 }
 
 impl NlmsgDeleteRoute {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        todo!()
+        const RTMSG_LEN: usize = mem::size_of::<rtmsg>();
+        const RTMSG_PADDING: usize = NLMSG_ALIGN(RTMSG_LEN) - RTMSG_LEN;
+
+        let route_msg = rtmsg {
+            rtm_family: self.family,
+            rtm_dst_len: self.dst_len,
+            rtm_src_len: self.src_len,
+            rtm_tos: self.tos,
+            rtm_table: self.table_id,
+            rtm_protocol: self.protocol,
+            rtm_scope: self.scope,
+            rtm_type: self.route_type,
+            rtm_flags: self.flags,
+        };
+
+        let rtmsg_bytes: [u8; RTMSG_LEN] = unsafe { mem::transmute(route_msg) };
+        buf.extend(&rtmsg_bytes);
+        buf.extend(&[0u8; RTMSG_PADDING]);
+
+        for attr in self.attrs.iter() {
+            attr.serialize(buf);
+        }
     }
 }
 
@@ -466,8 +558,89 @@ pub enum RouteAttr {
 }
 
 impl RouteAttr {
+    fn rta_type(&self) -> u16 {
+        match self {
+            RouteAttr::Unspec(_) => libc::RTA_UNSPEC,
+            RouteAttr::Destination(_) => libc::RTA_DST,
+            RouteAttr::Source(_) => libc::RTA_SRC,
+            RouteAttr::InputInterface(_) => libc::RTA_IIF,
+            RouteAttr::OutputInterface(_) => libc::RTA_OIF,
+            RouteAttr::Gateway(_) => libc::RTA_GATEWAY,
+            RouteAttr::Priority(_) => libc::RTA_PRIORITY,
+            RouteAttr::PreferredSource(_) => libc::RTA_PREFSRC,
+            RouteAttr::Metric(_) => libc::RTA_METRICS,
+            RouteAttr::Flow(_) => libc::RTA_FLOW,
+            RouteAttr::CacheInfo(_) => libc::RTA_CACHEINFO,
+            RouteAttr::TableId(_) => libc::RTA_TABLE,
+            RouteAttr::Mark(_) => libc::RTA_MARK,
+            RouteAttr::MfcStats(_) => libc::RTA_MFC_STATS,
+            RouteAttr::Via(_) => libc::RTA_VIA,
+            RouteAttr::NewDestination(_) => libc::RTA_NEWDST,
+            RouteAttr::Ipv6Preference(_) => libc::RTA_PREF,
+            RouteAttr::Expires(_) => libc::RTA_EXPIRES,
+            RouteAttr::Unknown(ty, _) => *ty,
+        }
+    }
+
     fn serialize(&self, buf: &mut Vec<u8>) {
-        todo!()
+        let rta_type = self.rta_type();
+
+        match self {
+            Self::Destination(a) | Self::Source(a) | Self::Gateway(a) | Self::PreferredSource(a) | Self::NewDestination(a) => {
+                match *a {
+                    IpAddr::V4(v4) => {
+                        buf.extend(8u16.to_ne_bytes());
+                        buf.extend(rta_type.to_ne_bytes());
+                        buf.extend(u32::from(v4).to_be_bytes());
+                    }
+                    IpAddr::V6(v6) => {
+                        buf.extend(20u16.to_ne_bytes());
+                        buf.extend(rta_type.to_ne_bytes());
+                        buf.extend(u128::from(v6).to_be_bytes());
+                    }
+                }
+                // let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
+                // buf.extend(iter::repeat(0).take(padded_len));
+            }
+            Self::Unspec(v) | Self::Unknown(_, v) | Self::Via(v) => {
+                let rta_len = 4u16 + v.len() as u16;
+                buf.extend(rta_len.to_ne_bytes());
+                buf.extend(rta_type.to_ne_bytes());
+                buf.extend(v);
+                let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
+                buf.extend(iter::repeat(0).take(padded_len));
+            }
+            Self::InputInterface(i) | Self::OutputInterface(i) | Self::Priority(i) | Self::Metric(i) | Self::Flow(i) | Self::Mark(i) | Self::Expires(i) | Self::TableId(i) => {
+                buf.extend(8u16.to_ne_bytes());
+                buf.extend(rta_type.to_ne_bytes());
+                buf.extend(i.to_ne_bytes());
+            }
+            Self::Ipv6Preference(i) => {
+                buf.extend(5u16.to_ne_bytes());
+                buf.extend(rta_type.to_ne_bytes());
+                buf.push(*i as u8);
+                let padded_len = NLMSG_ALIGN(5) - 5;
+                buf.extend(iter::repeat(0).take(padded_len));
+            }
+            Self::CacheInfo(c) => {
+                let rta_len = (mem::size_of_val(c) + 4) as u16;
+                buf.extend(rta_len.to_ne_bytes());
+                buf.extend(rta_type.to_ne_bytes());
+                let cache_bytes: [u8; mem::size_of::<RouteCacheInfo>()] = unsafe { mem::transmute_copy(c) };
+                buf.extend(&cache_bytes);
+                let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
+                buf.extend(iter::repeat(0).take(padded_len));
+            }
+            Self::MfcStats(m) => {
+                let rta_len = (mem::size_of_val(m) + 4) as u16;
+                buf.extend(rta_len.to_ne_bytes());
+                buf.extend(rta_type.to_ne_bytes());
+                let mfc_bytes: [u8; mem::size_of::<RouteMfcStats>()] = unsafe { mem::transmute_copy(m) };
+                buf.extend(&mfc_bytes);
+                let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
+                buf.extend(iter::repeat(0).take(padded_len));
+            }
+        }
     }
 }
 
@@ -506,7 +679,7 @@ pub enum NeighborAttr {
     /// NTA_DST - a neighbor cache network layer destination address
     DestinationAddress(IpAddr),
     /// NTA_LLADDR - a neighbor cache link layer address
-    LinkAddress(MacAddr),
+    LinkAddrAddress(MacAddr),
     /// NTA_CACHEINFO - cache statistics
     CacheInfo(NeighborCacheInfo),
     /// Some other unknown RT attribute
@@ -643,7 +816,7 @@ impl<'a> NlmsgRef<'a> {
                         ));
                     };
 
-                    NlmsgPayloadRef::GetRoute(NlmsgGetRoute::parse(route_payload)?)
+                    NlmsgPayloadRef::GetRoute(NlmsgGetRouteRef::parse(route_payload)?)
                 }
                 libc::RTM_NEWNEIGH => {
                     let Some(neighbor_payload) = data.get(PAYLOAD_START..) else {
@@ -652,7 +825,7 @@ impl<'a> NlmsgRef<'a> {
                         ));
                     };
 
-                    NlmsgPayloadRef::GetNeighbor(NlmsgGetNeighbor::parse(neighbor_payload)?)
+                    NlmsgPayloadRef::GetNeighbor(NlmsgGetNeighborRef::parse(neighbor_payload)?)
                 }
                 _ => NlmsgPayloadRef::Unknown,
             },
@@ -693,14 +866,14 @@ pub enum NlmsgPayloadRef<'a> {
     /// Informational response from an `RTM_GETADDR` request.
     GetAddress(NlmsgGetAddressRef<'a>),
     /// Informational response from an `RTM_GETROUTE` request.
-    GetRoute(NlmsgGetRoute<'a>),
+    GetRoute(NlmsgGetRouteRef<'a>),
     /// Informational response from an `RTM_GETNEIGHBOR` request.
-    GetNeighbor(NlmsgGetNeighbor<'a>),
+    GetNeighbor(NlmsgGetNeighborRef<'a>),
     /// Some other RTNetlink message
     Unknown,
     /*
     // /// Informational response from an `RTM_GETLINK` request.
-    // GetLink(),
+    // GetLinkAddr(),
     /// Informational response from an `RTM_GETRULE` request.
     GetRule(),
     /// Informational response from an `RTM_GETQDISC` request.
@@ -957,7 +1130,7 @@ pub struct AddrCacheInfo {
 }
 
 #[derive(Clone, Copy)]
-pub struct NlmsgGetNeighbor<'a> {
+pub struct NlmsgGetNeighborRef<'a> {
     iface_idx: i32,
     state: u16,
     flags: u8,
@@ -965,7 +1138,7 @@ pub struct NlmsgGetNeighbor<'a> {
     attr_data: &'a [u8],
 }
 
-impl<'a> NlmsgGetNeighbor<'a> {
+impl<'a> NlmsgGetNeighborRef<'a> {
     pub fn parse(data: &'a [u8]) -> Result<Self, NlParseError> {
         const NDMSG_LEN: usize = mem::size_of::<ndmsg>();
 
@@ -1070,7 +1243,7 @@ impl<'a> Iterator for NeighborAttrIter<'a> {
             libc::NDA_LLADDR => {
                 if attr_data.len() == 6 {
                     let cache_info_bytes: [u8; 6] = attr_data.try_into().unwrap();
-                    NeighborAttrRef::LinkAddress(MacAddr::from(cache_info_bytes))
+                    NeighborAttrRef::LinkAddrAddress(MacAddr::from(cache_info_bytes))
                 } else {
                     return Some(Err(NlParseError::new(
                         "netlink RTM_GETNEIGH had IFA_LLADDR attribute with invalid size",
@@ -1098,7 +1271,7 @@ pub enum NeighborAttrRef<'a> {
     /// NTA_DST - a neighbor cache network layer destination address
     DestinationAddress(IpAddr),
     /// NTA_LLADDR - a neighbor cache link layer address
-    LinkAddress(MacAddr),
+    LinkAddrAddress(MacAddr),
     /// NTA_CACHEINFO - cache statistics
     CacheInfo(NeighborCacheInfo),
     /// Some other unknown RT attribute
@@ -1115,7 +1288,7 @@ pub struct NeighborCacheInfo {
 }
 
 #[derive(Clone, Copy)]
-pub struct NlmsgGetRoute<'a> {
+pub struct NlmsgGetRouteRef<'a> {
     family: u8,
     dst_len: u8,
     src_len: u8,
@@ -1128,7 +1301,7 @@ pub struct NlmsgGetRoute<'a> {
     attr_data: &'a [u8],
 }
 
-impl<'a> NlmsgGetRoute<'a> {
+impl<'a> NlmsgGetRouteRef<'a> {
     pub fn parse(data: &'a [u8]) -> Result<Self, NlParseError> {
         const NDMSG_LEN: usize = mem::size_of::<rtmsg>();
 

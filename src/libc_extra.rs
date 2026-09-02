@@ -630,46 +630,25 @@ pub struct ifa_msghdr {
     pub ifam_metric: libc::c_int,
 }
 
-/*
+
 #[cfg(target_os = "macos")]
 pub use libc::rt_msghdr;
 
-#[cfg(any(target_os = "dragonfly", target_os = "openbsd"))]
+#[cfg(target_os = "dragonfly")]
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct rt_msghdr {
     pub rtm_msglen: libc::c_ushort,
     pub rtm_version: libc::c_uchar,
     pub rtm_type: libc::c_uchar,
-    #[cfg(target_os = "openbsd")]
-    pub rtm_hdrlen: libc::c_ushort,
     pub rtm_index: libc::c_ushort,
-    #[cfg(target_os = "openbsd")]
-    pub rtm_tableid: libc::c_ushort,
-    #[cfg(target_os = "openbsd")]
-    pub rtm_priority: libc::c_uchar,
-    #[cfg(target_os = "openbsd")]
-    pub rtm_mpls: libc::c_uchar,
-    #[cfg(target_os = "freebsd")]
-    pub _rtm_spare1: libc::c_ushort,
-    #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
     pub rtm_flags: libc::c_int,
     pub rtm_addrs: libc::c_int,
-    #[cfg(target_os = "openbsd")]
-    pub rtm_flags: libc::c_int,
-    #[cfg(target_os = "openbsd")]
-    pub rtm_fmask: libc::c_int,
     pub rtm_pid: libc::pid_t,
     pub rtm_seq: libc::c_int,
     pub rtm_errno: libc::c_int,
-    #[cfg(target_os = "dragonfly")]
     pub rtm_use: libc::c_int,
-    #[cfg(target_os = "freebsd")]
-    pub rtm_fmask: libc::c_int,
-    #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
     pub rtm_inits: libc::c_ulong,
-    #[cfg(target_os = "openbsd")]
-    pub rtm_inits: libc::c_uint,
     pub rtm_rmx: rt_metrics,
 }
 
@@ -707,6 +686,28 @@ pub struct rt_msghdr {
     pub rtm_errno: libc::c_int,
     pub rtm_use: libc::c_int,
     pub rtm_inits: libc::c_int,
+    pub rtm_rmx: rt_metrics,
+}
+
+#[cfg(target_os = "openbsd")]
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct rt_msghdr {
+    pub rtm_msglen: libc::c_ushort,
+    pub rtm_version: libc::c_uchar,
+    pub rtm_type: libc::c_uchar,
+    pub rtm_hdrlen: libc::c_ushort,
+    pub rtm_index: libc::c_ushort,
+    pub rtm_tableid: libc::c_ushort,
+    pub rtm_priority: libc::c_uchar,
+    pub rtm_mpls: libc::c_uchar,
+    pub rtm_addrs: libc::c_int,
+    pub rtm_flags: libc::c_int,
+    pub rtm_fmask: libc::c_int,
+    pub rtm_pid: libc::pid_t,
+    pub rtm_seq: libc::c_int,
+    pub rtm_errno: libc::c_int,
+    pub rtm_inits: libc::c_uint,
     pub rtm_rmx: rt_metrics,
 }
 
@@ -786,7 +787,7 @@ pub struct rt_metrics {
     pub rmx_expire: libc::time_t,
     pub rmx_pktsent: libc::time_t,
 }
-*/
+
 
 #[cfg(target_os = "macos")]
 #[repr(C)]
@@ -829,6 +830,79 @@ pub struct sockaddr_ndrv {
     pub snd_len: libc::c_uchar,
     pub snd_family: libc::c_uchar,
     pub snd_name: [libc::c_uchar; libc::IFNAMSIZ],
+}
+
+#[cfg(target_os = "dragonfly")]
+#[repr(C)]
+pub struct sockaddr_dl {
+    pub sdl_len: libc::c_uchar,
+    pub sdl_family: libc::c_uchar,
+    pub sdl_index: libc::c_ushort,
+    pub sdl_type: libc::c_uchar,
+    pub sdl_nlen: libc::c_uchar,
+    pub sdl_alen: libc::c_uchar,
+    pub sdl_slen: libc::c_uchar,
+    pub sdl_data: [libc::c_char; 12], 
+    pub sdl_rcf: libc::c_ushort,
+    pub sdl_route: [libc::c_ushort; 16],
+}
+
+#[cfg(target_os = "freebsd")]
+#[repr(C)]
+pub struct sockaddr_dl {
+    pub sdl_len: libc::c_uchar,
+    pub sdl_family: libc::c_uchar,
+    pub sdl_index: libc::c_ushort,
+    pub sdl_type: libc::c_uchar,
+    pub sdl_nlen: libc::c_uchar,
+    pub sdl_alen: libc::c_uchar,
+    pub sdl_slen: libc::c_uchar,
+    pub sdl_data: [libc::c_char; 46],
+}
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+pub struct sockaddr_dl {
+    pub sdl_len: libc::c_uchar,
+    pub sdl_family: libc::c_uchar,
+    pub sdl_index: libc::c_ushort,
+    pub sdl_type: libc::c_uchar,
+    pub sdl_nlen: libc::c_uchar,
+    pub sdl_alen: libc::c_uchar,
+    pub sdl_slen: libc::c_uchar,
+    pub sdl_data: [libc::c_char; 12],
+}
+
+#[cfg(target_os = "netbsd")]
+#[repr(C)]
+pub struct sockaddr_dl {
+    pub sdl_len: libc::c_uchar,
+    pub sdl_family: libc::c_uchar,
+    pub sdl_index: libc::c_ushort,
+    pub sdl_addr: dl_addr,
+}
+
+#[cfg(target_os = "netbsd")]
+#[repr(C)]
+pub struct dl_addr {
+    pub dl_type: libc::c_uchar,
+    pub dl_nlen: libc::c_uchar,
+    pub dl_alen: libc::c_uchar,
+    pub dl_slen: libc::c_uchar,
+    pub dl_data: [libc::c_char; 24],
+}
+
+#[cfg(target_os = "openbsd")]
+#[repr(C)]
+struct sockaddr_dl {
+    pub sdl_len: libc::c_uchar,
+    pub sdl_family: libc::c_uchar,
+    pub sdl_index: u16,
+    pub sdl_type: libc::c_uchar,
+    pub sdl_nlen: libc::c_uchar,
+    pub sdl_alen: libc::c_uchar,
+    pub sdl_slen: libc::c_uchar,
+    pub sdl_data: [libc::c_char; 24],
 }
 
 // <net/if_fake_var.h>
@@ -987,10 +1061,13 @@ pub const RTM_NEWADDR: libc::c_int = 0xc;
 #[allow(unused)]
 pub const RTM_NEWADDR: libc::c_int = 0x16;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "dragonfly", target_os = "macos"))]
 pub const AF_LINK: libc::c_int = 18;
 #[cfg(target_os = "macos")]
 pub const AF_NDRV: libc::c_int = 27;
+
+#[cfg(target_os = "dragonfly")]
+pub const IFT_ETHER: libc::c_uchar = 0x8;
 
 #[allow(unused)]
 pub const ND6_INFINITE_LIFETIME: u32 = u32::MAX;

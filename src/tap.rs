@@ -230,6 +230,7 @@ mod tests {
 
         let tap1_name = tap1.name().unwrap();
         drop(tap1);
+        std::thread::sleep(std::time::Duration::from_millis(100));
         assert!(!tap1_name.exists().unwrap());
     }
 

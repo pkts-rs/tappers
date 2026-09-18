@@ -33,6 +33,9 @@ async-std = ["dep:async-io", "dep:async-std"]
 mio = ["dep:mio"]
 smol = ["dep:async-io", "dep:smol"]
 tokio = ["dep:tokio"]
+# Enables universal cross-platfrom `new()` and `new_named()` implementations that may have a race
+# condition between device creation and attach.
+portable-racy = []
 
 
 [dependencies]

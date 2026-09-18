@@ -12,6 +12,7 @@
 //!
 //!
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{cmp, io, ptr, thread};
 
@@ -27,7 +28,7 @@ use super::TunAdapter;
 pub struct TunSession<'a> {
     adapter: &'a TunAdapter,
     session: *mut WintunSession,
-    nonblocking: bool,
+    nonblocking: AtomicBool,
 }
 
 impl<'a> TunSession<'a> {
@@ -49,7 +50,7 @@ impl<'a> TunSession<'a> {
         Self {
             adapter,
             session,
-            nonblocking: false,
+            nonblocking: AtomicBool::new(false),
         }
     }
 
@@ -59,6 +60,7 @@ impl<'a> TunSession<'a> {
         Self::read_handle_impl(&self.adapter, self.session)
     }
 
+    #[inline]
     pub(crate) fn read_handle_impl(adapter: &TunAdapter, session: *mut WintunSession) -> HANDLE {
         // SAFETY: read_event_handle is thread-safe and does not actually mutate the `WintunSession`
         adapter.wintun.read_event_handle(session)
@@ -79,9 +81,15 @@ impl<'a> TunSession<'a> {
         // 1. Ensure any use of this mutable pointer is thread-safe
         // 2. Watch out for mutation to the WintunSession while another reference is relying on its
         // state (e.g. iterator invalidation).
-        Self::send_impl(&self.adapter, self.session, self.nonblocking, buf)
+        Self::send_impl(
+            &self.adapter,
+            self.session,
+            self.nonblocking.load(Ordering::Relaxed),
+            buf,
+        )
     }
 
+    #[inline]
     pub(crate) fn send_impl(
         adapter: &TunAdapter,
         session: *mut WintunSession,
@@ -130,9 +138,15 @@ impl<'a> TunSession<'a> {
         // 1. Ensure any use of this mutable pointer is thread-safe
         // 2. Watch out for mutation to the WintunSession while another reference is relying on its
         // state (e.g. iterator invalidation).
-        Self::recv_impl(&self.adapter, self.session, self.nonblocking, buf)
+        Self::recv_impl(
+            &self.adapter,
+            self.session,
+            self.nonblocking.load(Ordering::Relaxed),
+            buf,
+        )
     }
 
+    #[inline]
     pub(crate) fn recv_impl(
         adapter: &TunAdapter,
         session: *mut WintunSession,
@@ -172,8 +186,9 @@ impl<'a> TunSession<'a> {
     ///
     /// See [`set_nonblocking()`](Self::set_nonblocking) for more information on blocking and
     /// nonblocking operation.
+    #[inline]
     pub fn nonblocking(&self) -> bool {
-        self.nonblocking
+        self.nonblocking.load(Ordering::Relaxed)
     }
 
     /// Sets whether the session blocks on calls to [`send()`](Self::send) and
@@ -193,8 +208,9 @@ impl<'a> TunSession<'a> {
     /// A consequence of this is that sending packets when a queue is full may be delayed by up to
     /// 100ms; if this is unacceptable for performance, consider using nonblocking `send()`/`recv()`
     /// and implementing a tighter resend loop.
-    pub fn set_nonblocking(&mut self, nonblocking: bool) {
-        self.nonblocking = nonblocking;
+    #[inline]
+    pub fn set_nonblocking(&self, nonblocking: bool) {
+        self.nonblocking.store(nonblocking, Ordering::Relaxed);
     }
 }
 

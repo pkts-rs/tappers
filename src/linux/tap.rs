@@ -9,18 +9,17 @@
 // except according to those terms.
 
 use std::ffi::CStr;
+use std::fs::{File, OpenOptions};
+use std::io;
+use std::io::{Read, Write};
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
-use std::{io, ptr};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd};
 
 use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
-use super::DEV_NET_TUN;
-
 // Need to add to libc
-
 #[cfg(not(doc))]
 const TUNGETIFF: libc::Ioctl = 0x800454D2;
 #[cfg(not(doc))]
@@ -38,16 +37,17 @@ const TUNSETPERSIST: libc::Ioctl = 0x400454CB;
 
 /// A TAP interface that includes Linux-specific functionality.
 pub struct Tap {
-    fd: RawFd,
+    inner: File,
 }
 
 impl Tap {
-    /// Creates a new, unique TAP device.
+    /// Creates a new, unique persistent TAP device, returning its interface name.
     ///
-    /// The interface name associated with this TAP device is chosen by the system, and can be
-    /// retrieved via the [`name()`](Self::name) method.
-    pub fn new() -> io::Result<Self> {
-        let flags = libc::IFF_TAP | libc::IFF_NO_PI | libc::IFF_TUN_EXCL;
+    /// The created TAP device may subsequently be opened using [`Tap::open`]. To atomically create
+    /// and open a TAP device in one operation, the [`Tap::new()`] function may be used.
+    #[inline]
+    pub fn create() -> io::Result<Interface> {
+        let flags = libc::IFF_TUN_EXCL | libc::IFF_TAP | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
             ifr_name: [0; 16],
@@ -56,24 +56,118 @@ impl Tap {
             },
         };
 
-        // TODO: unify `ErrorKind`s returned
-        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
+        let inner = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+
+        if unsafe { libc::ioctl(inner.as_raw_fd(), TUNSETIFF, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(fd);
-            return Err(err);
-        }
+        let tap = Self { inner };
+        tap.set_persistent(true)?;
+        drop(tap);
 
-        Ok(Self { fd })
+        Ok(unsafe { Interface::from_raw(req.ifr_name.map(|c| c as u8)) })
     }
 
-    /// Opens or creates a TAP device of the given name.
+    /// Creates a new persistent TAP device of the given name.
+    ///
+    /// The created TAP device may subsequently be opened using [`open()`](Self::open). To atomically
+    /// create and open a named TAP device in one operation, the [`new_named()`](Self::new_named)
+    /// function may be used, though it is only supported on certain platforms.
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
+    pub fn create_named(if_name: Interface) -> io::Result<()> {
+        let tap = Self::new_named(if_name, true)?;
+        tap.set_persistent(true)?;
+        Ok(())
+    }
+
+    /// Creates a new persistent TAP device of the given device number, erroring if the device
+    /// already exists.
+    ///
+    /// A handle to the created TAP device may subsequently be opened using [`Tap::new_named`] (or
+    /// [`Tap::open`] if the `portable-racy` feature is enabled). The created TAP device is
+    /// persistent until OS reboot unless it is explicitly destroyed.
+    #[cfg(not(target_os = "macos"))]
+    #[inline]
+    pub fn create_numbered(device_num: u32) -> io::Result<()> {
+        Self::create_named(Interface::new(format!("tap{}", device_num)).unwrap())
+    }
+
+    pub fn destroy(self) -> io::Result<()> {
+        self.set_state(DeviceState::Down)?;
+        self.set_persistent(false)?;
+        Ok(())
+    }
+
+    /// Destroys the TAP device specified by the given interface name.
+    #[inline]
+    pub fn destroy_named(if_name: Interface) -> io::Result<()> {
+        // TODO: switch to RTM_DELLINK in the future
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        if unsafe { libc::ioctl(file.as_raw_fd(), TUNSETIFF, &raw mut req) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        if unsafe { libc::ioctl(file.as_raw_fd(), TUNSETPERSIST, 0 as libc::c_int) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(())
+    }
+
+    /// Destroys the TAP device specified by the given interface number.
+    #[inline]
+    pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
+        Self::destroy_named(Interface::new(format!("tap{}", device_num)).unwrap())
+    }
+
+    #[inline]
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), libc::SIOCGIFINDEX, &raw mut req) } < 0 {
+            let err = io::Error::last_os_error();
+            if matches!(err.raw_os_error(), Some(libc::ENODEV)) {
+                Ok(false)
+            } else {
+                Err(err)
+            }
+        } else {
+            Ok(true)
+        }
+    }
+
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        Self::exists(Interface::new(format!("tap{}", device_num)).unwrap())
+    }
+
+    /// Opens an existing TAP device of the given name.
+    #[cfg(feature = "portable-racy")]
+    #[inline]
+    pub fn open_named(if_name: Interface) -> io::Result<Self> {
         let flags = libc::IFF_TAP | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
@@ -83,23 +177,83 @@ impl Tap {
             },
         };
 
-        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+
+        // TUNSETIFF will always create a new device if one doesn't already exist. This is contrary
+        // to the intended behavior of `open()`. We check for interface existence here before
+        // opening the TUN device. There remains a TOCTOU weakness here, but it's about as close as
+        // we can get to conforming behavior.
+        if if_name.index().is_err() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "TAP device does not exist",
+            ));
+        }
+
+        if unsafe { libc::ioctl(file.as_raw_fd(), TUNSETIFF, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(fd);
-            return Err(err);
-        }
-
-        Ok(Self { fd })
+        Ok(Self { inner: file })
     }
 
-    /// Creates a new TAP device, failing if a device of the given name already exists.
-    pub fn create_named(if_name: Interface) -> io::Result<Self> {
-        let flags = libc::IFF_TAP | libc::IFF_NO_PI | libc::IFF_TUN_EXCL;
+    /// Opens an existing TAP device of the given name.
+    #[cfg(feature = "portable-racy")]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        let if_name = Interface::new(format!("tap{}", device_num)).unwrap();
+        Self::open_named(if_name)
+    }
+
+    /// Creates a new, unique TAP device and returns a handle to it.
+    ///
+    /// The interface name associated with this TAP device is chosen by the system, and can be
+    /// retrieved via the [`name()`](Self::name) method. The returned TAP device is not persistent;
+    /// it will be destroyed when the returned `Tap` object goes out of scope unless its persistence
+    /// is changed via a call to [`Tap::set_persistent`].
+    pub fn new() -> io::Result<Self> {
+        let flags = libc::IFF_TAP | libc::IFF_NO_PI;
+
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+
+        let mut req = libc::ifreq {
+            ifr_name: [0; 16],
+            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+                ifru_flags: flags as i16,
+            },
+        };
+
+        if unsafe { libc::ioctl(file.as_raw_fd(), TUNSETIFF, &raw mut req) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(Self { inner: file })
+    }
+
+    #[inline]
+    pub(crate) fn new_compat(device_num: u32) -> io::Result<Self> {
+        Self::new_numbered(device_num, false)
+    }
+
+    /// Opens or creates a TAP device of the given name, returning an open handle to it.
+    ///
+    /// if `exclusive` is set to `true`, this function will fail if a TAP device matching `if_name`
+    /// already exists. A TAP device created (and not opened) via this method is not persistent; it
+    /// will be destroyed when the returned `Tap` object goes out of scope unless its persistence is
+    /// changed via a call to [`Tap::set_persistent`].
+    #[inline]
+    pub fn new_named(if_name: Interface, exclusive: bool) -> io::Result<Self> {
+        let flags = if exclusive {
+            libc::IFF_TUN_EXCL | libc::IFF_TAP | libc::IFF_NO_PI
+        } else {
+            libc::IFF_TAP | libc::IFF_NO_PI
+        };
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_char(),
@@ -108,18 +262,30 @@ impl Tap {
             },
         };
 
-        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+
+        if unsafe { libc::ioctl(file.as_raw_fd(), TUNSETIFF, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(fd);
-            return Err(err);
-        }
+        Ok(Self { inner: file })
+    }
 
-        Ok(Self { fd })
+    /// Opens or creates a TAP device of the given device number, returning an open handle to it.
+    ///
+    /// If `exclusive` is set to `true`, this function will fail if a TAP device matching `if_name`
+    /// already exists. A TAP device created (and not opened) via this method is not persistent; it
+    /// will be destroyed when the returned `Tap` object goes out of scope unless its persistence is
+    /// changed via a call to [`Tap::set_persistent`].
+    #[inline]
+    pub fn new_numbered(device_num: u32, exclusive: bool) -> io::Result<Self> {
+        Self::new_named(
+            Interface::new(format!("tap{}", device_num)).unwrap(),
+            exclusive,
+        )
     }
 
     /// Sets the persistence of the TAP interface.
@@ -134,7 +300,7 @@ impl Tap {
         };
 
         unsafe {
-            match libc::ioctl(self.fd, TUNSETPERSIST, persist) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNSETPERSIST, persist) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -149,7 +315,7 @@ impl Tap {
         };
 
         unsafe {
-            match libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNGETIFF, &raw mut req) {
                 0.. => Interface::from_cstr(CStr::from_ptr(req.ifr_name.as_ptr())),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -167,49 +333,47 @@ impl Tap {
             },
         };
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-        if ctrl_fd < 0 {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), libc::SIOCSIFNAME, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        let res = unsafe { libc::ioctl(ctrl_fd, libc::SIOCSIFNAME, ptr::addr_of_mut!(req)) };
-        let err = io::Error::last_os_error();
-        Self::close_fd(ctrl_fd);
-        match res {
-            0 => Ok(()),
-            _ => Err(err),
-        }
+        Ok(())
     }
 
-    /// Retrieves the current state of the TAP device (i.e. "up" or "down").
+    /// Retrieves the current state of the TAP device (i.e. "UP" or "DOWN").
     pub fn state(&self) -> io::Result<DeviceState> {
         let mut req = libc::ifreq {
             ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        unsafe {
-            match libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) {
-                0.. => {
-                    if (req.ifr_ifru.ifru_flags & libc::IFF_UP as i16) == 0 {
-                        Ok(DeviceState::Down)
-                    } else {
-                        Ok(DeviceState::Up)
-                    }
+        match unsafe { libc::ioctl(self.inner.as_raw_fd(), TUNGETIFF, &raw mut req) } {
+            0.. => {
+                if (unsafe { req.ifr_ifru.ifru_flags } & libc::IFF_UP as i16) == 0 {
+                    Ok(DeviceState::Down)
+                } else {
+                    Ok(DeviceState::Up)
                 }
-                _ => Err(io::Error::last_os_error()),
             }
+            _ => Err(io::Error::last_os_error()),
         }
     }
 
-    /// Sets the adapter state of the TAP device (e.g. "up" or "down").
+    /// Sets the adapter state of the TAP device (e.g. "UP" or "DOWN").
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         let mut req = libc::ifreq {
             ifr_name: [0; 16],
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.inner.as_raw_fd(), TUNGETIFF, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -220,18 +384,20 @@ impl Tap {
             }
         }
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-        if ctrl_fd < 0 {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(
+                match libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) {
+                    ..=-1 => return Err(io::Error::last_os_error()),
+                    fd => fd,
+                },
+            )
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), libc::SIOCSIFFLAGS, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        let res = unsafe { libc::ioctl(ctrl_fd, libc::SIOCSIFFLAGS, ptr::addr_of_mut!(req)) };
-        let err = io::Error::last_os_error();
-        Self::close_fd(ctrl_fd);
-        match res {
-            0 => Ok(()),
-            _ => Err(err),
-        }
+        Ok(())
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TAP device.
@@ -243,27 +409,27 @@ impl Tap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_mtu: 0 },
         };
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-        if ctrl_fd < 0 {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(
+                match libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) {
+                    ..=-1 => return Err(io::Error::last_os_error()),
+                    fd => fd,
+                },
+            )
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), libc::SIOCGIFMTU, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        let res = unsafe { libc::ioctl(ctrl_fd, libc::SIOCGIFMTU, ptr::addr_of_mut!(req)) };
-        let err = io::Error::last_os_error();
-        Self::close_fd(ctrl_fd);
-        match res {
-            0 => {
-                if unsafe { req.ifr_ifru.ifru_mtu < 0 } {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "unexpected negative MTU",
-                    ));
-                }
-
-                Ok(unsafe { req.ifr_ifru.ifru_mtu as usize })
-            }
-            _ => Err(err),
+        if unsafe { req.ifr_ifru.ifru_mtu < 0 } {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unexpected negative MTU",
+            ));
         }
+
+        Ok(unsafe { req.ifr_ifru.ifru_mtu as usize })
     }
 
     /// Sets the Maximum Transmission Unit (MTU) of the TAP device.
@@ -281,23 +447,25 @@ impl Tap {
             },
         };
 
-        let ctrl_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-        if ctrl_fd < 0 {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(
+                match libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) {
+                    ..=-1 => return Err(io::Error::last_os_error()),
+                    fd => fd,
+                },
+            )
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), libc::SIOCSIFMTU, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        let res = unsafe { libc::ioctl(ctrl_fd, libc::SIOCSIFMTU, ptr::addr_of_mut!(req)) };
-        let err = io::Error::last_os_error();
-        Self::close_fd(ctrl_fd);
-        match res {
-            0 => Ok(()),
-            _ => Err(err),
-        }
+        Ok(())
     }
 
     /// Indicates whether nonblocking is enabled for `read` and `write` operations on the TAP device.
     pub fn nonblocking(&self) -> io::Result<bool> {
-        let flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(self.inner.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -307,7 +475,7 @@ impl Tap {
 
     /// Sets nonblocking mode for `read` and `write` operations on the TAP device.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        let flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(self.inner.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -317,7 +485,7 @@ impl Tap {
             false => flags & !libc::O_NONBLOCK,
         };
 
-        if unsafe { libc::fcntl(self.fd, libc::F_SETFL, flags) } < 0 {
+        if unsafe { libc::fcntl(self.inner.as_raw_fd(), libc::F_SETFL, flags) } < 0 {
             Err(io::Error::last_os_error())
         } else {
             Ok(())
@@ -329,12 +497,11 @@ impl Tap {
     /// The device must be down (see [`set_state`](Self::set_state)) for this method to succeed.
     /// TAP devices have a default Ethernet link type of `ARPHRD_ETHER`.
     pub fn set_linktype(&self, linktype: u32) -> io::Result<()> {
-        unsafe {
-            match libc::ioctl(self.fd, TUNSETLINK, linktype) {
-                0.. => Ok(()),
-                _ => Err(io::Error::last_os_error()),
-            }
+        if unsafe { libc::ioctl(self.inner.as_raw_fd(), TUNSETLINK, linktype) } < 0 {
+            return Err(io::Error::last_os_error());
         }
+
+        Ok(())
     }
 
     /// Sets debug mode for the TAP device.
@@ -345,7 +512,7 @@ impl Tap {
         };
 
         unsafe {
-            match libc::ioctl(self.fd, TUNSETDEBUG, debug) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNSETDEBUG, debug) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -356,7 +523,7 @@ impl Tap {
     /// on the device.
     pub fn set_owner(&self, owner_id: u32) -> io::Result<()> {
         unsafe {
-            match libc::ioctl(self.fd, TUNSETOWNER, owner_id) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNSETOWNER, owner_id) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -367,7 +534,7 @@ impl Tap {
     /// perform operations on the device.
     pub fn set_group(&self, group_id: u32) -> io::Result<()> {
         unsafe {
-            match libc::ioctl(self.fd, TUNSETGROUP, group_id) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNSETGROUP, group_id) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -394,50 +561,41 @@ impl Tap {
 
     /// Receives a packet over the TAP device.
     pub fn recv(&self, data: &mut [u8]) -> io::Result<usize> {
-        unsafe {
-            match libc::read(self.fd, data.as_mut_ptr() as *mut libc::c_void, data.len()) {
-                r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
+        (&self.inner).read(data)
     }
 
     /// Sends a packet out over the TAP device.
     pub fn send(&self, data: &[u8]) -> io::Result<usize> {
-        unsafe {
-            match libc::write(self.fd, data.as_ptr() as *const libc::c_void, data.len()) {
-                r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
-    }
-
-    #[inline]
-    fn close_fd(fd: RawFd) {
-        unsafe {
-            debug_assert_eq!(libc::close(fd), 0);
-        }
+        (&self.inner).write(data)
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for Tap {
-    fn as_fd(&self) -> BorrowedFd {
-        unsafe { BorrowedFd::borrow_raw(self.fd) }
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.inner.as_fd()
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 impl AsRawFd for Tap {
     fn as_raw_fd(&self) -> RawFd {
-        self.fd
+        self.inner.as_raw_fd()
     }
 }
 
-impl Drop for Tap {
-    fn drop(&mut self) {
-        unsafe {
-            libc::close(self.fd);
+#[cfg(not(target_os = "windows"))]
+impl IntoRawFd for Tap {
+    fn into_raw_fd(self) -> RawFd {
+        self.inner.into_raw_fd()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl FromRawFd for Tap {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self {
+            inner: File::from_raw_fd(fd),
         }
     }
 }

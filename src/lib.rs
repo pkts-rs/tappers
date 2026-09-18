@@ -26,7 +26,7 @@
 //! use std::net::Ipv4Addr;
 //! use tappers::Tun;
 //!
-//! let mut tun = Tun::new()?;
+//! let mut tun = Tun::new_compat(12)?;
 //! tun.add_addr(Ipv4Addr::new(10, 100, 0, 1))?;
 //! tun.set_up()?; // Enables the TUN device to exchange packets
 //!
@@ -49,8 +49,8 @@
 //! use std::net::Ipv6Addr;
 //! use tappers::Tap;
 //!
-//! // Create a new TAP device with a unique identifier
-//! let mut tap = Tap::new()?;
+//! // Create a new TAP device with the given identifier
+//! let mut tap = Tap::new_compat(6)?;
 //! // Assign an IP address to the TAP device
 //! tap.add_addr(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xc00a, 0x2ff))?;
 //! // Enable the TAP device to begin receiving packets
@@ -76,11 +76,8 @@
 //! use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 //! use tappers::{AddAddressV4, AddAddressV6, AddressInfo, DeviceState, Interface, Tap};
 //!
-//! // Select an existing (or new) TAP interface name to open
-//! let tap_name = Interface::new("tap10")?;
-//!
 //! // Open the TAP device of the name "tap10" (or create it if it doesn't exist)
-//! let mut tap = Tap::new_named(tap_name)?;
+//! let mut tap = Tap::new_compat(10)?;
 //!
 //! // Add a new address with associated info to the TAP device
 //! let new_addr = Ipv4Addr::new(10, 100, 0, 1);
@@ -133,7 +130,13 @@
 // Show required OS/features on docs.rs.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(any(doc, feature = "async-std"))]
+#[cfg(any(
+    doc,
+    all(
+        feature = "async-std",
+        any(not(target_os = "windows"), feature = "wintun")
+    )
+))]
 pub mod async_std;
 #[cfg(any(doc, target_os = "linux"))]
 pub mod linux;
@@ -141,9 +144,15 @@ pub mod linux;
 pub mod macos;
 #[cfg(any(doc, all(feature = "mio", not(target_os = "windows"))))]
 pub mod mio;
-#[cfg(any(doc, feature = "smol"))]
+#[cfg(any(
+    doc,
+    all(feature = "smol", any(not(target_os = "windows"), feature = "wintun"))
+))]
 pub mod smol;
-#[cfg(any(doc, feature = "tokio"))]
+#[cfg(any(
+    doc,
+    all(feature = "tokio", any(not(target_os = "windows"), feature = "wintun"))
+))]
 pub mod tokio;
 #[cfg(any(
     doc,
@@ -191,6 +200,8 @@ use std::mem;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::RawFd;
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 #[cfg(all(doc, target_os = "windows"))]
 pub type RawFd = i32;
 #[cfg(not(target_os = "windows"))]
@@ -724,7 +735,7 @@ impl Interface {
     #[cfg(not(target_os = "windows"))]
     #[inline]
     fn index_impl(&self) -> io::Result<u32> {
-        match unsafe { libc::if_nametoindex(self.name.as_ptr() as *const libc::c_char) } {
+        match unsafe { libc::if_nametoindex(self.name.as_ptr().cast()) } {
             0 => Err(io::Error::last_os_error()),
             i => Ok(i),
         }
@@ -734,7 +745,7 @@ impl Interface {
     #[inline]
     fn index_impl(&self) -> io::Result<u32> {
         let mut index = 0u32;
-        match unsafe { GetAdapterIndex(self.name.as_ptr(), ptr::addr_of_mut!(index)) } {
+        match unsafe { GetAdapterIndex(self.name.as_ptr(), &raw mut index) } {
             0 => Ok(index),
             ERROR_DEV_NOT_EXIST | ERROR_NO_DATA => Err(io::ErrorKind::NotFound.into()),
             e => Err(io::Error::new(
@@ -809,10 +820,18 @@ impl Interface {
         // However, it looks like doing so is non-trivial; simply pulling out the socket creation
         // from this loop causes an unexpected bug in message parsing.
         for ifa_family in [libc::AF_INET, libc::AF_INET6] {
-            let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
-            if fd < 0 {
-                return Err(io::Error::last_os_error());
-            }
+            let sockfd = unsafe {
+                OwnedFd::from_raw_fd(
+                    match libc::socket(
+                        libc::AF_NETLINK,
+                        libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+                        libc::NETLINK_ROUTE,
+                    ) {
+                        ..=-1 => return Err(io::Error::last_os_error()),
+                        fd => fd,
+                    },
+                )
+            };
 
             let req = NetlinkRequest {
                 flags: (libc::NLM_F_REQUEST | libc::NLM_F_ROOT) as u16,
@@ -831,16 +850,14 @@ impl Interface {
 
             let ret = unsafe {
                 libc::send(
-                    fd,
+                    sockfd.as_raw_fd(),
                     req_bytes.as_ptr() as *const libc::c_void,
                     req_bytes.len(),
                     0,
                 )
             };
             if ret < 0 {
-                let err = io::Error::last_os_error();
-                Self::close_fd(fd);
-                return Err(err);
+                return Err(io::Error::last_os_error());
             }
 
             let mut buf = Vec::<u8>::new();
@@ -848,23 +865,19 @@ impl Interface {
 
             let len = unsafe {
                 libc::recv(
-                    fd,
+                    sockfd.as_raw_fd(),
                     buf.as_mut_ptr() as *mut libc::c_void,
                     NETLINK_MAX_RECV,
                     0,
                 )
             };
             if len < 0 {
-                let err = io::Error::last_os_error();
-                Self::close_fd(fd);
-                return Err(err);
+                return Err(io::Error::last_os_error());
             }
 
             unsafe {
                 buf.set_len(len as usize);
             }
-
-            Self::close_fd(fd);
 
             let resp = NetlinkResponseRef::new(&buf);
 
@@ -1009,7 +1022,7 @@ impl Interface {
                 mib.as_mut_ptr(),
                 mib.len() as libc::c_uint,
                 ptr::null_mut(),
-                ptr::addr_of_mut!(needed),
+                &raw mut needed,
                 ptr::null_mut(),
                 0,
             )
@@ -1032,7 +1045,7 @@ impl Interface {
                 mib.as_mut_ptr(),
                 mib.len() as libc::c_uint,
                 buf_ptr,
-                ptr::addr_of_mut!(buflen),
+                &raw mut buflen,
                 ptr::null_mut(),
                 0,
             )
@@ -1160,10 +1173,18 @@ impl Interface {
         };
         let prefixlen = req.netmask().unwrap_or(default_prefixlen);
 
-        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(
+                match libc::socket(
+                    libc::AF_NETLINK,
+                    libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+                    libc::NETLINK_ROUTE,
+                ) {
+                    ..=-1 => return Err(io::Error::last_os_error()),
+                    fd => fd,
+                },
+            )
+        };
 
         let local = sockaddr_nl {
             nl_family: libc::AF_NETLINK as u16,
@@ -1171,12 +1192,10 @@ impl Interface {
             nl_pid: 0,
             nl_groups: 0,
         };
-        let local_len = mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t;
+        let local_len = mem::size_of_val(&local) as libc::socklen_t;
 
-        if unsafe { libc::bind(fd, ptr::addr_of!(local) as *const libc::sockaddr, local_len) } < 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(fd);
-            return Err(err);
+        if unsafe { libc::bind(sockfd.as_raw_fd(), (&raw const local).cast(), local_len) } < 0 {
+            return Err(io::Error::last_os_error());
         }
 
         let mut attrs = vec![AddressAttr::Local(req.addr())];
@@ -1218,44 +1237,36 @@ impl Interface {
         };
 
         let msg = libc::msghdr {
-            msg_name: ptr::addr_of_mut!(dst_addr) as *mut libc::c_void,
-            msg_namelen: mem::size_of::<libc::sockaddr_nl>() as u32,
-            msg_iov: ptr::addr_of_mut!(iov),
+            msg_name: (&raw mut dst_addr).cast(),
+            msg_namelen: mem::size_of_val(&dst_addr) as u32,
+            msg_iov: &raw mut iov,
             msg_iovlen: 1,
             msg_control: ptr::null_mut(),
             msg_controllen: 0,
             msg_flags: 0,
         };
 
-        let res = unsafe { libc::sendmsg(fd, ptr::addr_of!(msg), 0) };
+        let res = unsafe { libc::sendmsg(sockfd.as_raw_fd(), &raw const msg, 0) };
         if res < 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(fd);
-            return Err(err);
+            return Err(io::Error::last_os_error());
         }
 
-        let mut buf = Vec::<u8>::new();
-        buf.reserve_exact(NETLINK_MAX_RECV);
-
+        let mut buf = vec![0u8; NETLINK_MAX_RECV];
         let len = unsafe {
             libc::recv(
-                fd,
-                buf.as_mut_ptr() as *mut libc::c_void,
+                sockfd.as_raw_fd(),
+                buf.as_mut_ptr().cast(),
                 NETLINK_MAX_RECV,
                 0,
             )
         };
         if len < 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(fd);
-            return Err(err);
+            return Err(io::Error::last_os_error());
         }
 
         unsafe {
             buf.set_len(len as usize);
         }
-
-        Self::close_fd(fd);
 
         let resp = NetlinkResponseRef::new(buf.as_slice());
         let msg = resp.messages().next().ok_or(io::Error::new(
@@ -1358,7 +1369,7 @@ impl Interface {
                 }
 
                 unsafe {
-                    match libc::ioctl(inet_fd, SIOCAIFADDR, ptr::addr_of_mut!(req)) {
+                    match libc::ioctl(inet_fd, SIOCAIFADDR, &raw mut req) {
                         0 => {
                             libc::close(inet_fd);
                             Ok(())
@@ -1452,7 +1463,7 @@ impl Interface {
                 }
 
                 unsafe {
-                    match libc::ioctl(inet6_fd, SIOCAIFADDR_IN6, ptr::addr_of_mut!(req)) {
+                    match libc::ioctl(inet6_fd, SIOCAIFADDR_IN6, &raw mut req) {
                         0 => {
                             libc::close(inet6_fd);
                             Ok(())
@@ -1484,10 +1495,18 @@ impl Interface {
             IpAddr::V6(_) => (libc::AF_INET6, 64),
         };
 
-        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(
+                match libc::socket(
+                    libc::AF_NETLINK,
+                    libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+                    libc::NETLINK_ROUTE,
+                ) {
+                    ..=-1 => return Err(io::Error::last_os_error()),
+                    fd => fd,
+                },
+            )
+        };
 
         let local = sockaddr_nl {
             nl_family: libc::AF_NETLINK as u16,
@@ -1497,10 +1516,8 @@ impl Interface {
         };
         let local_len = mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t;
 
-        if unsafe { libc::bind(fd, ptr::addr_of!(local) as *const libc::sockaddr, local_len) } < 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(fd);
-            return Err(err);
+        if unsafe { libc::bind(sockfd.as_raw_fd(), (&raw const local).cast(), local_len) } < 0 {
+            return Err(io::Error::last_os_error());
         }
 
         let req = NetlinkRequest {
@@ -1520,7 +1537,7 @@ impl Interface {
         let mut req_bytes = req.serialize();
 
         let mut iov = libc::iovec {
-            iov_base: req_bytes.as_mut_ptr() as *mut libc::c_void,
+            iov_base: req_bytes.as_mut_ptr().cast::<libc::c_void>(),
             iov_len: req_bytes.len(),
         };
 
@@ -1532,20 +1549,18 @@ impl Interface {
         };
 
         let msg = libc::msghdr {
-            msg_name: ptr::addr_of_mut!(dst_addr) as *mut libc::c_void,
-            msg_namelen: mem::size_of::<libc::sockaddr_nl>() as u32,
-            msg_iov: ptr::addr_of_mut!(iov),
+            msg_name: (&raw mut dst_addr).cast(),
+            msg_namelen: mem::size_of_val(&dst_addr) as u32,
+            msg_iov: &raw mut iov,
             msg_iovlen: 1,
             msg_control: ptr::null_mut(),
             msg_controllen: 0,
             msg_flags: 0,
         };
 
-        let res = unsafe { libc::sendmsg(fd, ptr::addr_of!(msg), 0) };
+        let res = unsafe { libc::sendmsg(sockfd.as_raw_fd(), &raw const msg, 0) };
         if res < 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(fd);
-            return Err(err);
+            return Err(io::Error::last_os_error());
         }
 
         let mut buf = Vec::<u8>::new();
@@ -1553,23 +1568,19 @@ impl Interface {
 
         let len = unsafe {
             libc::recv(
-                fd,
+                sockfd.as_raw_fd(),
                 buf.as_mut_ptr() as *mut libc::c_void,
                 NETLINK_MAX_RECV,
                 0,
             )
         };
         if len < 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(fd);
-            return Err(err);
+            return Err(io::Error::last_os_error());
         }
 
         unsafe {
             buf.set_len(len as usize);
         }
-
-        Self::close_fd(fd);
 
         let resp = NetlinkResponseRef::new(buf.as_slice());
         let msg = resp.messages().next().ok_or(io::Error::new(
@@ -1601,10 +1612,12 @@ impl Interface {
     fn remove_addr_impl(&self, addr: IpAddr) -> io::Result<()> {
         match addr {
             IpAddr::V4(v4_addr) => {
-                let inet_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-                if inet_fd < 0 {
-                    return Err(io::Error::last_os_error());
-                }
+                let sockfd = unsafe {
+                    OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                        ..=-1 => return Err(io::Error::last_os_error()),
+                        fd => fd,
+                    })
+                };
 
                 let addr = libc::sockaddr_in {
                     sin_family: libc::AF_INET as u8,
@@ -1623,25 +1636,19 @@ impl Interface {
                     ifr_ifru: __c_anonymous_ifr_ifru { ifru_addr: addr },
                 };
 
-                unsafe {
-                    match libc::ioctl(inet_fd, SIOCDIFADDR, ptr::addr_of_mut!(req)) {
-                        0 => {
-                            libc::close(inet_fd);
-                            Ok(())
-                        }
-                        _ => {
-                            let err = io::Error::last_os_error();
-                            libc::close(inet_fd);
-                            Err(err)
-                        }
-                    }
-                }
-            }
-            IpAddr::V6(v6_addr) => {
-                let inet6_fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM, 0) };
-                if inet6_fd < 0 {
+                if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCDIFADDR, &raw mut req) } < 0 {
                     return Err(io::Error::last_os_error());
                 }
+
+                Ok(())
+            }
+            IpAddr::V6(v6_addr) => {
+                let sockfd = unsafe {
+                    OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET6, libc::SOCK_DGRAM, 0) {
+                        ..=-1 => return Err(io::Error::last_os_error()),
+                        fd => fd,
+                    })
+                };
 
                 let s6_addr: [u8; 16] = u128::from(v6_addr).to_be_bytes();
 
@@ -1659,28 +1666,12 @@ impl Interface {
                     ifr_ifru: __c_anonymous_in6_ifr_ifru { ifru_addr: addr },
                 };
 
-                unsafe {
-                    match libc::ioctl(inet6_fd, SIOCDIFADDR_IN6, ptr::addr_of_mut!(req)) {
-                        0 => {
-                            libc::close(inet6_fd);
-                            Ok(())
-                        }
-                        _ => {
-                            let err = io::Error::last_os_error();
-                            libc::close(inet6_fd);
-                            Err(err)
-                        }
-                    }
+                if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCDIFADDR_IN6, &raw mut req) } < 0 {
+                    return Err(io::Error::last_os_error());
                 }
-            }
-        }
-    }
 
-    #[cfg(target_os = "linux")]
-    #[inline]
-    fn close_fd(fd: RawFd) {
-        unsafe {
-            debug_assert_eq!(libc::close(fd), 0);
+                Ok(())
+            }
         }
     }
 }

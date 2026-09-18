@@ -31,11 +31,6 @@ impl TapWrapper {
     pub fn get_ref(&self) -> &Tap {
         &self.0
     }
-
-    #[inline]
-    pub fn get_mut(&mut self) -> &mut Tap {
-        &mut self.0
-    }
 }
 
 /// A cross-platform asynchronous TAP interface, suitable for tunnelling link-layer packets.
@@ -49,13 +44,12 @@ pub struct AsyncTap {
 impl AsyncTap {
     /// Creates a new, unique TAP device.
     #[inline]
-    pub fn new() -> io::Result<Self> {
-        Self::new_impl()
+    pub fn new(tap: Tap) -> io::Result<Self> {
+        Self::new_impl(tap)
     }
 
     #[cfg(not(target_os = "windows"))]
-    fn new_impl() -> io::Result<Self> {
-        let mut tap = Tap::new()?;
+    fn new_impl(tap: Tap) -> io::Result<Self> {
         tap.set_nonblocking(true)?;
 
         Ok(Self {
@@ -64,33 +58,8 @@ impl AsyncTap {
     }
 
     #[cfg(target_os = "windows")]
-    fn new_impl() -> io::Result<Self> {
-        let mut tap = Tap::new()?;
-
-        Ok(Self {
-            tap: TapWrapper(tap),
-        })
-    }
-
-    /// Opens or creates a TAP device of the given name.
-    #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        Self::new_named_impl(if_name)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
-        let mut tap = Tap::new_named(if_name)?;
+    fn new_impl(tap: Tap) -> io::Result<Self> {
         tap.set_nonblocking(true)?;
-
-        Ok(Self {
-            tap: Async::new(tap)?,
-        })
-    }
-
-    #[cfg(target_os = "windows")]
-    pub fn new_named_impl(if_name: Interface) -> io::Result<Self> {
-        let mut tap = Tap::new_named(if_name)?;
 
         Ok(Self {
             tap: TapWrapper(tap),
@@ -105,20 +74,20 @@ impl AsyncTap {
 
     /// Sets the adapter state of the TAP device (e.g. "up" or "down").
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
-        unsafe { self.tap.get_mut().set_state(state) }
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
+        self.tap.get_ref().set_state(state)
     }
 
     /// Sets the adapter state of the TAP device to "up".
     #[inline]
-    pub fn set_up(&mut self) -> io::Result<()> {
-        unsafe { self.tap.get_mut().set_state(DeviceState::Up) }
+    pub fn set_up(&self) -> io::Result<()> {
+        self.tap.get_ref().set_state(DeviceState::Up)
     }
 
     /// Sets the adapter state of the TAP device to "down".
     #[inline]
-    pub fn set_down(&mut self) -> io::Result<()> {
-        unsafe { self.tap.get_mut().set_state(DeviceState::Down) }
+    pub fn set_down(&self) -> io::Result<()> {
+        self.tap.get_ref().set_state(DeviceState::Down)
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TAP device.

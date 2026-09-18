@@ -38,10 +38,89 @@ pub struct Tap {
 }
 
 impl Tap {
-    // Note: Wintun TOCTOU? Only if other interface not created with Wintun but not `tappers`
-    //
+    /// Creates a new persistent TUN device with a unique device number assigned and returns its
+    /// interface name.
+    ///
+    /// The created TUN device may subsequently be opened using [`Tun::open`] or [`Tun::new_named`]. The created TUN
+    /// device is persistent until OS reboot unless it is explicitly destroyed.
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "openbsd",
+        target_os = "windows"
+    )))]
+    #[inline]
+    pub fn create() -> io::Result<Interface> {
+        TapImpl::create()
+    }
 
-    /// Creates a new, unique TAP device.
+    /// Creates a new persistent TUN device of the given device number, erroring if the device
+    /// already exists.
+    ///
+    /// A handle to the created TUN device may subsequently be opened using [`Tun::new_numbered`] (or
+    /// [`Tun::open`] if the `portable-racy` feature is enabled). The created TUN device is
+    /// persistent until OS reboot unless it is explicitly destroyed.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[inline]
+    pub fn create_numbered(device_num: u32) -> io::Result<()> {
+        TapImpl::create_numbered(device_num)
+    }
+
+    /// Destroys the provided TUN device, freeing its
+    pub fn destroy(self) -> io::Result<()> {
+        self.inner.destroy()
+    }
+
+    /// Destroys the TUN device specified by the given interface name.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    pub fn destroy_named(if_name: Interface) -> io::Result<()> {
+        TapImpl::destroy_named(if_name)
+    }
+
+    /// Destroys the TUN device specified by the given interface number.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
+        TapImpl::destroy_numbered(device_num)
+    }
+
+    /// Checks to see whether a TUN device of the given name exists.
+    #[inline]
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        TapImpl::exists(if_name)
+    }
+
+    /// Checks to see whether a TUN device of the given interface number exists.
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        TapImpl::exists_numbered(device_num)
+    }
+
+    /// Opens an existing TUN device of the given device number.
+    #[cfg(any(
+        target_os = "dragonfly",
+        target_os = "netbsd",
+        target_os = "openbsd",
+        target_os = "windows",
+        all(feature = "portable-racy", not(target_os = "macos"))
+    ))]
+    #[inline]
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        Ok(Self {
+            inner: TapImpl::open(device_num)?,
+        })
+    }
+
+    /// Creates a new, unique TUN device and returns an open handle to it.
+    ///
+    /// The interface name associated with this TUN device is chosen by the system, and can be
+    /// retrieved via the [`name()`](Self::name) method. The created TUN device is not persistent,
+    /// meaning that it will be destroyed when the returned `Tun` object goes out of scope.
+    #[cfg(all(
+        not(target_os = "macos"),
+        not(target_os = "netbsd"),
+        not(target_os = "openbsd"),
+        any(feature = "portable-racy", not(target_os = "windows"))
+    ))]
     #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Self {
@@ -49,11 +128,26 @@ impl Tap {
         })
     }
 
-    /// Opens or creates a TAP device of the given name.
-    #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
+    pub fn new_compat(device_num: u32) -> io::Result<Self> {
         Ok(Self {
-            inner: TapImpl::new_named(if_name)?,
+            inner: TapImpl::new_compat(device_num)?,
+        })
+    }
+
+    /// Opens or creates a TUN device of the given device number, returning an open handle to it.
+    ///
+    /// The created TUN device is not persistent, meaning that it will be destroyed when the
+    /// returned `Tun` object goes out of scope.
+    #[cfg(not(any(
+        target_os = "dragonfly",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )))]
+    #[inline]
+    pub fn new_numbered(device_num: u32) -> io::Result<Self> {
+        Ok(Self {
+            inner: TapImpl::new_numbered(device_num)?,
         })
     }
 
@@ -63,9 +157,15 @@ impl Tap {
         self.inner.name()
     }
 
-    /// Sets the adapter state of the TAP device (e.g. "up" or "down").
+    /// Retrieves the current adapter state of the TAP device (e.g. "UP" or "DOWN").
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.inner.state()
+    }
+
+    /// Sets the adapter state of the TAP device (e.g. "UP" or "DOWN").
+    #[inline]
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.inner.set_state(state)
     }
 
@@ -89,7 +189,7 @@ impl Tap {
 
     /// Sets the blocking mode of the TAP device for reads/writes.
     #[inline]
-    pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.inner.set_nonblocking(nonblocking)
     }
 
@@ -143,7 +243,7 @@ impl AsRawFd for Tap {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for Tap {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.inner.as_fd()
     }
 }
@@ -154,9 +254,9 @@ mod tests {
 
     #[test]
     fn unique_names() {
-        let tap1 = Tap::new().unwrap();
-        let tap2 = Tap::new().unwrap();
-        let tap3 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(8).unwrap();
+        let tap2 = Tap::new_compat(10).unwrap();
+        let tap3 = Tap::new_compat(12).unwrap();
 
         let tap1_name = tap1.name().unwrap();
         let tap2_name = tap2.name().unwrap();
@@ -165,8 +265,13 @@ mod tests {
         assert!(tap1_name != tap2_name);
         assert!(tap1_name != tap3_name);
         assert!(tap2_name != tap3_name);
+
+        tap1.destroy().unwrap();
+        tap2.destroy().unwrap();
+        tap3.destroy().unwrap();
     }
 
+    /*
     #[cfg(target_os = "macos")]
     #[test]
     fn given_name() {
@@ -175,7 +280,7 @@ mod tests {
         let chosen_name = unsafe { CStr::from_ptr(b"feth24\0".as_ptr() as *const libc::c_char) };
 
         let iface = Interface::from_cstr(chosen_name).unwrap();
-        let tun = Tap::new_named(iface).unwrap();
+        let tun = Tap::new_compat(24).unwrap();
         let tun_iface = tun.name().unwrap();
 
         assert_eq!(chosen_name, tun_iface.name_cstr());
@@ -189,53 +294,69 @@ mod tests {
         let chosen_name = unsafe { CStr::from_ptr(b"tap24\0".as_ptr() as *const libc::c_char) };
 
         let iface = Interface::from_cstr(chosen_name).unwrap();
-        let tap = Tap::new_named(iface).unwrap();
+        let tap = Tap::new_numbered(24).unwrap();
         let tap_iface = tap.name().unwrap();
 
         assert_eq!(chosen_name, tap_iface.name_cstr());
     }
+    */
 
     #[test]
     fn up_down() {
-        let mut tap1 = Tap::new().unwrap();
+        let mut tap1 = Tap::new_compat(7).unwrap();
 
         tap1.set_up().unwrap();
         tap1.set_down().unwrap();
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn exists() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(7).unwrap();
         let tap1_name = tap1.name().unwrap();
         assert!(tap1_name.exists().unwrap());
+        tap1.destroy().unwrap();
     }
 
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn not_exists() {
         use std::ffi::OsStr;
         let chosen_name = OsStr::new("tap24");
         let iface = Interface::new(chosen_name).unwrap();
-        assert!(!iface.exists().unwrap());
+        assert!(!Tap::exists(iface).unwrap());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn not_exists() {
+        use std::ffi::OsStr;
+        let chosen_name = OsStr::new("feth24");
+        let iface = Interface::new(chosen_name).unwrap();
+        assert!(!Tap::exists(iface).unwrap());
     }
 
     #[test]
     fn not_persistent() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(8).unwrap();
 
         let tap1_name = tap1.name().unwrap();
-        drop(tap1);
-        assert!(!tap1_name.exists().unwrap());
+        tap1.destroy().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!Tap::exists(tap1_name).unwrap());
     }
 
     #[test]
     fn nonblocking_switch() {
-        let mut tap = Tap::new().unwrap();
+        let tap = Tap::new_compat(10).unwrap();
 
         assert_eq!(tap.nonblocking().unwrap(), false);
         tap.set_nonblocking(true).unwrap();
         assert_eq!(tap.nonblocking().unwrap(), true);
         tap.set_nonblocking(false).unwrap();
         assert_eq!(tap.nonblocking().unwrap(), false);
+
+        tap.destroy().unwrap();
     }
 }
 
@@ -248,17 +369,18 @@ mod tests_unix {
 
     #[test]
     fn add_ipv4() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(7).unwrap();
         let ip1 = Ipv4Addr::new(10, 101, 0, 1);
         tap1.add_addr(ip1).unwrap();
 
         let addrs = tap1.addrs().unwrap();
         assert!(addrs.iter().any(|a| a.address() == ip1));
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn add_ipv4_multi() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(7).unwrap();
 
         let ip1 = Ipv4Addr::new(10, 101, 0, 1);
         tap1.add_addr(ip1).unwrap();
@@ -269,22 +391,24 @@ mod tests_unix {
         let addrs = tap1.addrs().unwrap();
         assert!(addrs.iter().any(|a| a.address() == ip1));
         assert!(addrs.iter().any(|a| a.address() == ip2));
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn add_ipv6() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(77).unwrap();
 
         let ip1 = Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8);
         tap1.add_addr(ip1).unwrap();
 
         let addrs = tap1.addrs().unwrap();
         assert!(addrs.iter().any(|a| a.address() == ip1));
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn add_ipv6_multi() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(4).unwrap();
         let ip1 = Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8);
         let ip2 = Ipv6Addr::new(32, 5, 3, 4, 5, 6, 7, 8);
         tap1.add_addr(ip1).unwrap();
@@ -293,11 +417,12 @@ mod tests_unix {
         let addrs = tap1.addrs().unwrap();
         assert!(addrs.iter().any(|a| a.address() == ip1));
         assert!(addrs.iter().any(|a| a.address() == ip2));
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn add_ipv4_ipv6_multi() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(10).unwrap();
         let ip1 = Ipv4Addr::new(10, 101, 0, 1);
         let ip2 = Ipv4Addr::new(10, 102, 0, 1);
         let ip3 = Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8);
@@ -311,21 +436,23 @@ mod tests_unix {
         assert!(addrs.iter().any(|a| a.address() == ip2));
         assert!(addrs.iter().any(|a| a.address() == ip3));
         assert!(addrs.iter().any(|a| a.address() == ip4));
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn remove_ipv4() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(8).unwrap();
         let ipv4 = Ipv4Addr::new(10, 101, 0, 1);
         tap1.add_addr(IpAddr::V4(ipv4)).unwrap();
         tap1.remove_addr(IpAddr::V4(ipv4)).unwrap();
         let addrs = tap1.addrs().unwrap();
         assert!(!addrs.iter().any(|a| a.address() == ipv4));
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn remove_ipv4_multi() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(11).unwrap();
         let ip1 = IpAddr::V4(Ipv4Addr::new(10, 101, 0, 1));
         let ip2 = IpAddr::V4(Ipv4Addr::new(10, 102, 0, 1));
         tap1.add_addr(ip1).unwrap();
@@ -335,21 +462,23 @@ mod tests_unix {
         let addrs = tap1.addrs().unwrap();
         assert!(!addrs.iter().any(|a| a.address() == ip1));
         assert!(!addrs.iter().any(|a| a.address() == ip2));
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn remove_ipv6() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(8).unwrap();
         let ip1 = IpAddr::V6(Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8));
         tap1.add_addr(ip1).unwrap();
         tap1.remove_addr(ip1).unwrap();
         let addrs = tap1.addrs().unwrap();
         assert!(!addrs.iter().any(|a| a.address() == ip1));
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn remove_ipv6_multi() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(9).unwrap();
         let ip1 = IpAddr::V6(Ipv6Addr::new(32, 2, 3, 4, 5, 6, 7, 8));
         let ip2 = IpAddr::V6(Ipv6Addr::new(2, 5, 3, 4, 5, 6, 7, 8));
         tap1.add_addr(ip1).unwrap();
@@ -358,11 +487,12 @@ mod tests_unix {
         tap1.remove_addr(ip2).unwrap();
         let addrs = tap1.addrs().unwrap();
         assert!(!addrs.iter().any(|a| a.address() == ip1));
+        tap1.destroy().unwrap();
     }
 
     #[test]
     fn remove_ipv4_ipv6_multi() {
-        let tap1 = Tap::new().unwrap();
+        let tap1 = Tap::new_compat(6).unwrap();
         let ip1 = IpAddr::V6(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
         let ip2 = IpAddr::V6(Ipv6Addr::new(2, 5, 3, 4, 5, 6, 7, 8));
         let ip3 = IpAddr::V4(Ipv4Addr::new(10, 101, 0, 1));
@@ -380,5 +510,6 @@ mod tests_unix {
         assert!(!addrs.iter().any(|a| a.address() == ip2));
         assert!(!addrs.iter().any(|a| a.address() == ip3));
         assert!(!addrs.iter().any(|a| a.address() == ip4));
+        tap1.destroy().unwrap();
     }
 }

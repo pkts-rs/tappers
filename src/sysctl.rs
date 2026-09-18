@@ -107,7 +107,7 @@ pub enum SysctlMessage<'a> {
     //    InterfaceInfo,
     NewAddress(SysctlNewAddress<'a>),
     //    Announce,
-    Unknown(i32),
+    Unknown(#[allow(unused)] i32),
 }
 
 pub struct SysctlNewAddress<'a> {
@@ -117,16 +117,19 @@ pub struct SysctlNewAddress<'a> {
 
 impl<'a> SysctlNewAddress<'a> {
     #[inline]
+    #[allow(unused)]
     pub fn index(&self) -> libc::c_ushort {
         self.header.ifam_index
     }
 
     #[inline]
+    #[allow(unused)]
     pub fn flags(&self) -> libc::c_int {
         self.header.ifam_flags
     }
 
     #[inline]
+    #[allow(unused)]
     pub fn metric(&self) -> libc::c_int {
         self.header.ifam_metric
     }
@@ -258,10 +261,10 @@ pub enum SysctlAddr {
 
 #[cfg(target_os = "macos")]
 mod tests_macos {
-    use super::*;
-
     #[test]
     fn single_ipv6_macos() {
+        use crate::*;
+
         let sysctl_out = [
             132u8, 0, 5, 14, 16, 0, 0, 0, 81, 128, 0, 0, 19, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 220,
             5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,

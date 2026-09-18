@@ -8,22 +8,20 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::ffi::{CStr, CString};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::{array, cmp, io, mem, ptr};
 
 use crate::libc_extra::*;
 use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface, MacAddr};
 
-const DEV_BPF: *const libc::c_char = b"/dev/bpf\0".as_ptr() as *const libc::c_char;
-const FETH_PREFIX: &[u8] = b"feth";
 const NET_LINK_FAKE_LRO: *const libc::c_char =
     b"net.link.fake.lro\0".as_ptr() as *const libc::c_char;
 
-const BPF_CREATE_ATTEMPTS: u32 = 1024;
 const BPF_BUFFER_LEN: i32 = 131072;
 
 /// Fake Ethernet ("feth") TAP device interface that includes MacOS-specific functionality.
@@ -31,12 +29,7 @@ const BPF_BUFFER_LEN: i32 = 131072;
 /// Apple does not support conventional TAP APIs, so this implementation instead uses the somewhat
 /// undocumented `IF_FAKE` or "feth" interface to act as a link-layer virtual network.
 pub struct FethTap {
-    iface: Interface,
-    peer_iface: Interface,
-    /// NDRV file descriptor for sending packets on the interface.
-    ndrv_fd: RawFd,
-    /// BPF file descriptor for receiving packets from the interface.
-    bpf_fd: RawFd,
+    bpf: File,
 }
 
 impl FethTap {
@@ -45,9 +38,11 @@ impl FethTap {
     /// The interface name associated with this TAP device will be "feth" with a device number
     /// appended (e.g. "feth0", "feth1"), and can be retrieved via the [`name()`](Self::name)
     /// method.
-    pub fn new() -> io::Result<Self> {
-        Self::new_named(None, None)
+    pub fn create() -> io::Result<()> {
+        Self::create_named(None, None)
     }
+
+    // BIOCSETLIF to lock bpf to specific feth sink
 
     /// Creates a new TAP device using the specified interface numbers for the `feth` devices.
     ///
@@ -58,260 +53,292 @@ impl FethTap {
     /// may instead be used to manually assign interface numbers. If one or both of the interface
     /// numbers is already being used (or is otherwise unavailable), this method will return an
     /// error.
-    pub fn new_numbered(if_number: Option<u32>, peer_if_number: Option<u32>) -> io::Result<Self> {
-        let iface = match if_number {
+    pub fn create_numbered(
+        adapter_if_number: Option<u32>,
+        sink_if_number: Option<u32>,
+    ) -> io::Result<()> {
+        let iface = match adapter_if_number {
             Some(n) => Some(Interface::new_raw(format!("feth{}", n).as_bytes())?),
             None => None,
         };
 
-        let peer_iface = match peer_if_number {
+        let peer_iface = match sink_if_number {
             Some(n) => Some(Interface::new_raw(format!("feth{}", n).as_bytes())?),
             None => None,
         };
 
-        Self::new_named(iface, peer_iface)
+        Self::create_named(iface, peer_iface)
     }
 
     /// Creates a new TAP device using the specified interface names for the `feth` devices.
     ///
     /// MacOS requires that a pair of `feth` devices be created in order to mimic TAP behavior.
-    /// These devices are paired to one another; one device is used as a virtual interface, while
-    /// the other is used to actually read and write packets. A call to [`new()`](Self::new)
+    /// These devices are paired to one another; one device is used as an adapter interface, while
+    /// the other is used as a sink to actually read and write packets. A call to [`new()`](Self::new)
     /// normally assigns the two lowest available interface numbers to these devices; this method
     /// may instead be used to manually assign interface numbers. If one or both of the interface
     /// numbers is already being used (or is otherwise unavailable), this method will return an
     /// error.
-    pub fn new_named(iface: Option<Interface>, peer_iface: Option<Interface>) -> io::Result<Self> {
-        let mut iface = iface.unwrap_or(Interface::new_raw(FETH_PREFIX)?);
-        let mut peer_iface = peer_iface.unwrap_or(Interface::new_raw(FETH_PREFIX)?);
+    pub fn create_named(
+        adapter_if_name: Option<Interface>,
+        sink_if_name: Option<Interface>,
+    ) -> io::Result<()> {
+        let mut adapter_if_name = adapter_if_name.unwrap_or(Interface::new_raw(b"feth")?);
+        let mut sink_if_name = sink_if_name.unwrap_or(Interface::new_raw(b"feth")?);
 
-        if &iface.name[..4] != FETH_PREFIX {
+        /*
+        if &adapter_if_name.name_raw()[..4] != b"feth" || !adapter_if_name.name_raw()[4].is_ascii_digit() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "supplied iface was not a `feth` interface",
             ));
         }
 
-        if &peer_iface.name[..4] != FETH_PREFIX {
+        if &sink_if_name.name_raw()[..4] != b"feth" || !adapter_if_name.name_raw()[4].is_ascii_digit() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "supplied peer_iface was not a `feth` interface",
             ));
         }
+        */
 
-        let ndrv_fd = unsafe { libc::socket(AF_NDRV, libc::SOCK_RAW, 0) };
-        if ndrv_fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
 
         // TODO: set O_CLOEXEC on this and all other sockets
 
-        // Create the primary `feth` device
-
         let mut req = libc::ifreq {
-            ifr_name: iface.name_raw_char(),
+            ifr_name: adapter_if_name.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
         // SIOCIFCREATE2 is of no effect for `feth` sockets, so we don't use it?
-        if unsafe { libc::ioctl(ndrv_fd, SIOCIFCREATE, ptr::addr_of_mut!(req)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(ndrv_fd);
-            return Err(err);
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCIFCREATE, &raw mut req) } < 0 {
+            let e = io::Error::last_os_error();
+            return Err(e);
         }
 
-        iface = Interface::from_cstr(unsafe { CStr::from_ptr(req.ifr_name.as_ptr()) }).unwrap();
+        adapter_if_name = unsafe { Interface::from_raw(req.ifr_name.map(|c| c as u8)) };
 
         // Create the peer `feth` device
+        req.ifr_name = sink_if_name.name_raw_char();
 
-        let mut peer_req = libc::ifreq {
-            ifr_name: peer_iface.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
-        };
-
-        if unsafe { libc::ioctl(ndrv_fd, SIOCIFCREATE, ptr::addr_of_mut!(peer_req)) } != 0 {
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCIFCREATE, &raw mut req) } < 0 {
             let err = io::Error::last_os_error();
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
+            Self::destroy_iface(sockfd.as_raw_fd(), adapter_if_name);
             return Err(err);
         }
 
-        peer_iface =
-            Interface::from_cstr(unsafe { CStr::from_ptr(peer_req.ifr_name.as_ptr()) }).unwrap();
+        sink_if_name = unsafe { Interface::from_raw(req.ifr_name.map(|c| c as u8)) };
 
         // Peer the two devices together
 
         let mut fake_req = if_fake_request {
             iffr_reserved: [0u64; 4],
             iffr_u: __c_anonymous_iffr_u {
-                iffru_peer_name: peer_iface.name_raw_char(),
+                iffru_peer_name: sink_if_name.name_raw_char(),
             },
         };
 
         let mut spec = ifdrv {
-            ifd_name: req.ifr_name,
+            ifd_name: adapter_if_name.name_raw_char(),
             ifd_cmd: IF_FAKE_S_CMD_SET_PEER,
             ifd_len: mem::size_of_val(&fake_req),
-            ifd_data: ptr::addr_of_mut!(fake_req) as *mut libc::c_void,
+            ifd_data: (&raw mut fake_req).cast(),
         };
 
-        if unsafe { libc::ioctl(ndrv_fd, SIOCSDRVSPEC, ptr::addr_of_mut!(spec)) } != 0 {
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCSDRVSPEC, &raw mut spec) } != 0 {
             let err = io::Error::last_os_error();
-            Self::destroy_iface(ndrv_fd, peer_iface);
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
+            Self::destroy_iface(sockfd.as_raw_fd(), adapter_if_name);
+            Self::destroy_iface(sockfd.as_raw_fd(), sink_if_name);
             return Err(err);
         }
 
-        // Bind/connect the NDRV file descriptor to the peer `feth` device
+        Ok(())
+    }
 
-        let ndrv_addrlen = mem::size_of::<sockaddr_ndrv>();
-        let mut ndrv_addr = sockaddr_ndrv {
-            snd_len: ndrv_addrlen as u8,
-            snd_family: AF_NDRV as u8,
-            snd_name: [0u8; libc::IF_NAMESIZE],
+    pub(crate) fn new_compat(device_num: u32) -> io::Result<Self> {
+        match Self::create_numbered(Some(device_num), None) {
+            Ok(()) => (),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
+            Err(e) => return Err(e),
+        }
+        Self::open(device_num)
+    }
+
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        if &if_name.name_raw()[..4] != b"feth" || !matches!(if_name.name_raw()[4], b'0'..=b'9') {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "non-TUN interface name provided",
+            ));
+        }
+
+        let mut req = ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: __c_anonymous_ifr_ifru {
+                ifru_data: ptr::null_mut(),
+            },
         };
 
-        for (dst, src) in ndrv_addr.snd_name.iter_mut().zip(peer_req.ifr_name) {
-            *dst = src as u8;
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCGIFFLAGS, &raw mut req) } == 0 {
+            return Ok(true);
         }
 
-        let ndrv_addr_ptr = ptr::addr_of!(ndrv_addr) as *const libc::sockaddr;
-        if unsafe { libc::bind(ndrv_fd, ndrv_addr_ptr, ndrv_addrlen as u32) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::destroy_iface(ndrv_fd, peer_iface);
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
-            return Err(err);
+        let err = io::Error::last_os_error();
+        if matches!(err.raw_os_error(), Some(libc::ENXIO)) {
+            Ok(false)
+        } else {
+            Err(err)
+        }
+    }
+
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        Self::exists(Interface::new_raw(
+            format!("feth{}", device_num).as_bytes(),
+        )?)
+    }
+
+    pub fn open(device_num: u32) -> io::Result<Self> {
+        let if_name = Interface::new(format!("feth{}", device_num)).unwrap();
+        Self::open_named(if_name)
+    }
+
+    pub fn open_named(if_name: Interface) -> io::Result<Self> {
+        if &if_name.name_raw()[..4] != b"feth" || !if_name.name_raw()[4].is_ascii_digit() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "supplied if_name was not a feth interface",
+            ));
         }
 
-        if unsafe { libc::connect(ndrv_fd, ndrv_addr_ptr, ndrv_addrlen as u32) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::destroy_iface(ndrv_fd, peer_iface);
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
-            return Err(err);
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
+        let mut ifreq = if_fake_request {
+            iffr_reserved: [0u64; 4],
+            iffr_u: __c_anonymous_iffr_u {
+                iffru_peer_name: [0i8; libc::IFNAMSIZ],
+            },
+        };
+
+        let mut ifd = ifdrv {
+            ifd_name: if_name.name_raw_char(),
+            ifd_cmd: IF_FAKE_G_CMD_GET_PEER,
+            ifd_len: mem::size_of_val(&ifreq),
+            ifd_data: (&raw mut ifreq).cast(),
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), libc::SIOCGDRVSPEC, &raw mut ifd) } < 0 {
+            return Err(io::Error::last_os_error());
         }
 
-        // Open BPF device
+        let sink_if_name =
+            unsafe { Interface::from_raw(ifreq.iffr_u.iffru_peer_name.map(|i| i as u8)) };
 
-        let mut bpf_fd = unsafe { libc::open(DEV_BPF, libc::O_RDWR | libc::O_CLOEXEC) };
-        if bpf_fd < 0 {
-            let errno = unsafe { *libc::__error() };
-            if errno != libc::ENOENT {
-                // `/dev/bpf` device existed, but some other error occurred
-                let err = io::Error::last_os_error();
-                Self::destroy_iface(ndrv_fd, peer_iface);
-                Self::destroy_iface(ndrv_fd, iface);
-                Self::close_fd(ndrv_fd);
-                return Err(err);
-            }
+        if sink_if_name.name_cstr() == c"" {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "supplied feth interface has no peer",
+            ));
+        }
 
-            // `/dev/bpf` isn't available--try `/dev/bpfXXX`
-            // Some net utilities hardcode /dev/bpf0 for use, so we politely avoid it
-            for dev_idx in 1..=BPF_CREATE_ATTEMPTS {
-                let device = CString::new(format!("/dev/bpf{}", dev_idx).into_bytes()).unwrap();
-                bpf_fd = unsafe { libc::open(device.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
-                if bpf_fd >= 0 {
-                    break;
+        let mut sink_req = libc::ifreq {
+            ifr_name: sink_if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        let mut bpf_idx = 0;
+        let bpf = loop {
+            match OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(format!("/dev/bpf{}", bpf_idx))
+            {
+                Ok(file) => break file,
+                Err(e) if e.raw_os_error() == Some(libc::EBUSY) => {
+                    bpf_idx += 1;
+                    if bpf_idx >= 1024 {
+                        return Err(e);
+                    }
                 }
-
-                let errno = unsafe { *libc::__error() };
-                if errno != libc::EBUSY {
-                    // Device wasn't in use, but some other error occurred
-                    let err = io::Error::last_os_error();
-                    Self::destroy_iface(ndrv_fd, peer_iface);
-                    Self::destroy_iface(ndrv_fd, iface);
-                    Self::close_fd(ndrv_fd);
-                    return Err(err);
-                }
+                Err(e) => return Err(e),
             }
-
-            if bpf_fd < 0 {
-                // None of the BPF creation attempts succeeded
-                let err = io::Error::last_os_error();
-                Self::destroy_iface(ndrv_fd, peer_iface);
-                Self::destroy_iface(ndrv_fd, iface);
-                Self::close_fd(ndrv_fd);
-                return Err(err);
-            }
-        }
-
-        // Configure BPF device
+        };
 
         let mut enable = 1i32;
         let mut disable = 0i32;
         let mut buffer_len = BPF_BUFFER_LEN; // TODO: make configurable?
 
         // Sets the length of the buffer that will be used for subsequent `read()`s
-        if unsafe { libc::ioctl(bpf_fd, libc::BIOCSBLEN, ptr::addr_of_mut!(buffer_len)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(bpf_fd);
-            Self::destroy_iface(ndrv_fd, peer_iface);
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
-            return Err(err);
+        if unsafe {
+            libc::ioctl(
+                bpf.as_raw_fd(),
+                libc::BIOCSBLEN,
+                ptr::addr_of_mut!(buffer_len),
+            )
+        } != 0
+        {
+            return Err(io::Error::last_os_error());
         }
 
         // Have reads return immediately when packets are received
         // TODO: make configurable?
-        if unsafe { libc::ioctl(bpf_fd, libc::BIOCIMMEDIATE, ptr::addr_of_mut!(enable)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(bpf_fd);
-            Self::destroy_iface(ndrv_fd, peer_iface);
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
-            return Err(err);
+        if unsafe {
+            libc::ioctl(
+                bpf.as_raw_fd(),
+                libc::BIOCIMMEDIATE,
+                ptr::addr_of_mut!(enable),
+            )
+        } != 0
+        {
+            return Err(io::Error::last_os_error());
         }
 
         // Don't sniff packets that were sent out on the interface
-        if unsafe { libc::ioctl(bpf_fd, libc::BIOCGSEESENT, ptr::addr_of_mut!(disable)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(bpf_fd);
-            Self::destroy_iface(ndrv_fd, peer_iface);
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
-            return Err(err);
+        if unsafe {
+            libc::ioctl(
+                bpf.as_raw_fd(),
+                libc::BIOCGSEESENT,
+                ptr::addr_of_mut!(disable),
+            )
+        } != 0
+        {
+            return Err(io::Error::last_os_error());
         }
 
         // Set BPF socket to be listening on to the peer `feth` interface
-        if unsafe { libc::ioctl(bpf_fd, libc::BIOCSETIF, ptr::addr_of_mut!(peer_req)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(bpf_fd);
-            Self::destroy_iface(ndrv_fd, peer_iface);
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
-            return Err(err);
+        if unsafe { libc::ioctl(bpf.as_raw_fd(), libc::BIOCSETIF, &raw mut sink_req) } != 0 {
+            return Err(io::Error::last_os_error());
         }
 
         // Disable network-layer header rewriting on the interface output routine
-        if unsafe { libc::ioctl(bpf_fd, libc::BIOCSHDRCMPLT, ptr::addr_of_mut!(enable)) } != 0 {
-            let err = io::Error::last_os_error();
-            Self::close_fd(bpf_fd);
-            Self::destroy_iface(ndrv_fd, peer_iface);
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
-            return Err(err);
+        if unsafe { libc::ioctl(bpf.as_raw_fd(), libc::BIOCSHDRCMPLT, &raw mut enable) } != 0 {
+            return Err(io::Error::last_os_error());
         }
 
         // Do receive packets even if they're not addressed specifically to the interface's
         // associated address
-        if unsafe { libc::ioctl(bpf_fd, libc::BIOCPROMISC as u64, ptr::addr_of_mut!(enable)) } != 0
-        {
-            let err = io::Error::last_os_error();
-            Self::close_fd(bpf_fd);
-            Self::destroy_iface(ndrv_fd, peer_iface);
-            Self::destroy_iface(ndrv_fd, iface);
-            Self::close_fd(ndrv_fd);
-            return Err(err);
+        if unsafe { libc::ioctl(bpf.as_raw_fd(), libc::BIOCPROMISC as u64, &raw mut enable) } != 0 {
+            return Err(io::Error::last_os_error());
         }
 
-        Ok(Self {
-            iface,
-            peer_iface,
-            ndrv_fd,
-            bpf_fd,
-        })
+        Ok(Self { bpf })
     }
 
     /// Determines whether Link Receive Offload (LRO) is enabled for all TAP (feth) devices.
@@ -345,7 +372,7 @@ impl FethTap {
                 NET_LINK_FAKE_LRO,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::addr_of_mut!(lro) as *mut libc::c_void,
+                (&raw mut lro).cast(),
                 mem::size_of_val(&lro),
             ) {
                 0 => Ok(()),
@@ -356,18 +383,54 @@ impl FethTap {
 
     /// Returns the primary `feth` interface name associated with the TAP device.
     pub fn name(&self) -> io::Result<Interface> {
-        Ok(self.iface)
+        let sink_name = self.sink_name()?;
+
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
+        let mut ifreq = if_fake_request {
+            iffr_reserved: [0u64; 4],
+            iffr_u: __c_anonymous_iffr_u {
+                iffru_peer_name: [0i8; libc::IFNAMSIZ],
+            },
+        };
+
+        let mut ifd = ifdrv {
+            ifd_name: sink_name.name_raw_char(),
+            ifd_cmd: IF_FAKE_G_CMD_GET_PEER,
+            ifd_len: mem::size_of_val(&ifreq),
+            ifd_data: (&raw mut ifreq).cast(),
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCGDRVSPEC, &raw mut ifd) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(unsafe { Interface::from_raw(ifreq.iffr_u.iffru_peer_name.map(|c| c as u8)) })
     }
 
-    /// Returns the peer `feth` interface name associated with the TAP device.
-    pub fn peer_name(&self) -> io::Result<Interface> {
-        Ok(self.peer_iface)
+    /// Returns the sink `feth` interface name associated with the TAP device.
+    pub fn sink_name(&self) -> io::Result<Interface> {
+        let mut req = libc::ifreq {
+            ifr_name: [0i8; libc::IFNAMSIZ],
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        if unsafe { libc::ioctl(self.bpf.as_raw_fd(), libc::BIOCGETIF, &raw mut req) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(unsafe { Interface::from_raw(req.ifr_name.map(|c| c as u8)) })
     }
 
     /// Returns the Maximum Transmission Unit (MTU) of the TAP device.
     pub fn mtu(&self) -> io::Result<usize> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: self.name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_devmtu: libc::ifdevmtu {
                     ifdm_current: 0,
@@ -377,8 +440,15 @@ impl FethTap {
             },
         };
 
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
         unsafe {
-            match libc::ioctl(self.ndrv_fd, SIOCGIFDEVMTU, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(sockfd.as_raw_fd(), SIOCGIFDEVMTU, &raw mut req) {
                 0 => Ok(req.ifr_ifru.ifru_devmtu.ifdm_current as usize),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -389,7 +459,7 @@ impl FethTap {
     /// set to.
     pub fn min_mtu(&self) -> io::Result<usize> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: self.name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_devmtu: libc::ifdevmtu {
                     ifdm_current: 0,
@@ -399,8 +469,15 @@ impl FethTap {
             },
         };
 
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
         unsafe {
-            match libc::ioctl(self.ndrv_fd, SIOCGIFDEVMTU, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(sockfd.as_raw_fd(), SIOCGIFDEVMTU, &raw mut req) {
                 0 => Ok(req.ifr_ifru.ifru_devmtu.ifdm_min as usize),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -411,7 +488,7 @@ impl FethTap {
     /// set to.
     pub fn max_mtu(&self) -> io::Result<usize> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: self.name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_devmtu: libc::ifdevmtu {
                     ifdm_current: 0,
@@ -421,8 +498,15 @@ impl FethTap {
             },
         };
 
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
         unsafe {
-            match libc::ioctl(self.ndrv_fd, SIOCGIFDEVMTU, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(sockfd.as_raw_fd(), SIOCGIFDEVMTU, &raw mut req) {
                 0 => Ok(req.ifr_ifru.ifru_devmtu.ifdm_max as usize),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -438,27 +522,49 @@ impl FethTap {
             )
         })?;
 
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: self.name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_mtu: mtu },
         };
 
-        unsafe {
-            match libc::ioctl(self.ndrv_fd, SIOCSIFMTU, ptr::addr_of_mut!(req)) {
-                0 => Ok(()),
-                _ => Err(io::Error::last_os_error()),
-            }
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCSIFMTU, &raw mut req) } < 0 {
+            return Err(io::Error::last_os_error());
         }
+
+        req = libc::ifreq {
+            ifr_name: self.sink_name()?.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_mtu: mtu },
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCSIFMTU, &raw mut req) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(())
     }
 
-    /// Retrieves the current state of the TAP device (i.e. "up" or "down").
+    /// Retrieves the current state of the TAP device (i.e. "UP" or "DOWN").
     pub fn state(&self) -> io::Result<DeviceState> {
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: self.name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCGIFFLAGS, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -471,29 +577,21 @@ impl FethTap {
 
     /// Sets the adapter state of the TUN device (e.g. "up" or "down").
     pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: self.name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        /*
-        let mut peer_req = libc::ifreq {
-            ifr_name: self.peer_iface.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
-        };
-        */
-
-        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCGIFFLAGS, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
-
-        /*
-        if unsafe { libc::ioctl(self.bpf_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        */
-
-        // TODO: This ^ was failing with EINVAL. Is it correct to not call it?
 
         unsafe {
             match state {
@@ -508,27 +606,56 @@ impl FethTap {
             }
         }
 
-        if unsafe { libc::ioctl(self.ndrv_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCSIFFLAGS, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        /*
-        if unsafe { libc::ioctl(self.bpf_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
+        // Now do for sink
+
+        let mut req = libc::ifreq {
+            ifr_name: self.sink_name()?.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCGIFFLAGS, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
-        */
+
+        unsafe {
+            match state {
+                DeviceState::Down => {
+                    req.ifr_ifru.ifru_flags &= !(libc::IFF_UP as i16);
+                    // peer_req.ifr_ifru.ifru_flags &= !(libc::IFF_UP as i16);
+                }
+                DeviceState::Up => {
+                    req.ifr_ifru.ifru_flags |= libc::IFF_UP as i16;
+                    // peer_req.ifr_ifru.ifru_flags |= libc::IFF_UP as i16;
+                }
+            }
+        }
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCSIFFLAGS, &raw mut req) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
 
         Ok(())
     }
 
     /// Indicates whether Address Resolution Protocol (ARP) is enabled on the Tap device.
     pub fn arp(&self) -> io::Result<bool> {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: self.name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCGIFFLAGS, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -541,21 +668,28 @@ impl FethTap {
 
     /// Enables or disables Address Resolution Protocol (ARP) on the Tap device.
     pub fn set_arp(&self, do_arp: bool) -> io::Result<()> {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: self.name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        let mut peer_req = libc::ifreq {
-            ifr_name: self.peer_iface.name_raw_char(),
+        let mut sink_req = libc::ifreq {
+            ifr_name: self.sink_name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCGIFFLAGS, &raw mut req) } < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(self.ndrv_fd, SIOCGIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCGIFFLAGS, &raw mut sink_req) } < 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -563,20 +697,20 @@ impl FethTap {
             match do_arp {
                 true => {
                     req.ifr_ifru.ifru_flags &= !(libc::IFF_NOARP as i16);
-                    peer_req.ifr_ifru.ifru_flags &= !(libc::IFF_NOARP as i16);
+                    sink_req.ifr_ifru.ifru_flags &= !(libc::IFF_NOARP as i16);
                 }
                 false => {
                     req.ifr_ifru.ifru_flags |= libc::IFF_NOARP as i16;
-                    peer_req.ifr_ifru.ifru_flags |= libc::IFF_NOARP as i16;
+                    sink_req.ifr_ifru.ifru_flags |= libc::IFF_NOARP as i16;
                 }
             }
         }
 
-        if unsafe { libc::ioctl(self.ndrv_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCSIFFLAGS, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(self.ndrv_fd, SIOCSIFFLAGS, ptr::addr_of_mut!(peer_req)) } != 0 {
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCSIFFLAGS, &raw mut sink_req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -762,7 +896,7 @@ impl FethTap {
 
     /// Indicates whether nonblocking is enabled for `read` and `write` operations on the TUN device.
     pub fn nonblocking(&self) -> io::Result<bool> {
-        let flags = unsafe { libc::fcntl(self.bpf_fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(self.bpf.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -772,7 +906,7 @@ impl FethTap {
 
     /// Sets nonblocking mode for `read` and `write` operations on the TUN device.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        let flags = unsafe { libc::fcntl(self.bpf_fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(self.bpf.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -782,14 +916,11 @@ impl FethTap {
             false => flags & !libc::O_NONBLOCK,
         };
 
-        if unsafe { libc::fcntl(self.bpf_fd, libc::F_SETFL, flags) } < 0 {
+        if unsafe { libc::fcntl(self.bpf.as_raw_fd(), libc::F_SETFL, flags) } < 0 {
             return Err(io::Error::last_os_error());
         } else {
             Ok(())
         }
-
-        // TODO: NDRV socket didn't allow setting nonblocking... is that okay?
-        // I'm assuming it's guaranteed not to block since it runs system commands.
     }
 
     // Need to define SIOCGIFLLADDR first
@@ -820,6 +951,13 @@ impl FethTap {
 
     /// Sets the link-layer address of the interface.
     pub fn set_ll_addr(&self, addr: MacAddr) -> io::Result<()> {
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
         let addr = libc::sockaddr_dl {
             sdl_len: mem::size_of::<libc::sockaddr_dl>() as u8,
             sdl_family: AF_LINK as u8,
@@ -838,7 +976,7 @@ impl FethTap {
         };
 
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: self.name()?.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru {
                 ifru_addr: libc::sockaddr {
                     sa_family: 0,
@@ -851,8 +989,8 @@ impl FethTap {
         // TODO: this feels very, very wrong. `sockaddr_dl` technically fits within the ifr_ifru
         // union, and it's the type of address required for this ioctl, but it just feels... wrong.
         unsafe {
-            let ll_addr_ptr = ptr::addr_of!(addr) as *const u8;
-            let ifreq_addr_ptr = ptr::addr_of_mut!(req.ifr_ifru.ifru_addr) as *mut u8;
+            let ll_addr_ptr = (&raw const addr).cast::<u8>();
+            let ifreq_addr_ptr = (&raw mut req.ifr_ifru.ifru_addr).cast();
             let copy_len = cmp::min(
                 mem::size_of_val(&addr),
                 mem::size_of::<libc::__c_anonymous_ifr_ifru>(),
@@ -861,7 +999,7 @@ impl FethTap {
         }
 
         unsafe {
-            match libc::ioctl(self.ndrv_fd, SIOCSIFLLADDR, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(sockfd.as_raw_fd(), SIOCSIFLLADDR, &raw mut req) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -944,27 +1082,13 @@ impl FethTap {
     /// Sends a single packet out over the TAP interface.
     #[inline]
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        unsafe {
-            match libc::write(self.ndrv_fd, buf.as_ptr() as *mut libc::c_void, buf.len()) {
-                s @ 0.. => Ok(s as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
+        (&self.bpf).write(buf)
     }
 
     /// Receives a packet over the TAP device.
     #[inline]
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        unsafe {
-            match libc::read(
-                self.ndrv_fd,
-                buf.as_mut_ptr() as *mut libc::c_void,
-                buf.len(),
-            ) {
-                r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
+        (&self.bpf).read(buf)
     }
 
     /// Deletes the feth interface(s) from the operating system.
@@ -973,36 +1097,59 @@ impl FethTap {
     pub fn destroy(self) -> io::Result<()> {
         let mut err = None;
 
-        Self::close_fd(self.bpf_fd);
+        let adapter_name = self.name()?;
+        let sink_name = self.sink_name()?;
 
-        let mut peer_req = libc::ifreq {
-            ifr_name: self.peer_iface.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
-        };
-
-        match unsafe { libc::ioctl(self.ndrv_fd, SIOCIFDESTROY, ptr::addr_of_mut!(peer_req)) } {
-            0 => (),
-            _ => err = Some(io::Error::last_os_error()),
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
         };
 
         let mut req = libc::ifreq {
-            ifr_name: self.iface.name_raw_char(),
+            ifr_name: adapter_name.name_raw_char(),
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        match unsafe { libc::ioctl(self.ndrv_fd, SIOCIFDESTROY, ptr::addr_of_mut!(req)) } {
-            0 => (),
-            _ => {
-                err.replace(io::Error::last_os_error());
-            }
+        let mut sink_req = libc::ifreq {
+            ifr_name: sink_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        Self::close_fd(self.ndrv_fd);
-
-        match err {
-            None => Ok(()),
-            Some(e) => Err(e),
+        if let Err(e) = self.set_state(DeviceState::Down) {
+            err = Some(e);
         }
+
+        drop(self);
+
+        let mut unpeer_req = if_fake_request {
+            iffr_reserved: [0u64; 4],
+            iffr_u: __c_anonymous_iffr_u {
+                iffru_peer_name: [0i8; libc::IFNAMSIZ],
+            },
+        };
+
+        let mut spec = ifdrv {
+            ifd_name: adapter_name.name_raw_char(),
+            ifd_cmd: IF_FAKE_S_CMD_SET_PEER,
+            ifd_len: mem::size_of_val(&unpeer_req),
+            ifd_data: (&raw mut unpeer_req).cast(),
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCSDRVSPEC, &raw mut spec) } < 0 {
+            err = Some(io::Error::last_os_error());
+        }
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCIFDESTROY, &raw mut req) } < 0 {
+            err = Some(io::Error::last_os_error());
+        };
+
+        if unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCIFDESTROY, &raw mut sink_req) } < 0 {
+            err = Some(io::Error::last_os_error());
+        };
+
+        err.map_or(Ok(()), |e| Err(e))
     }
 
     fn destroy_iface(sockfd: RawFd, iface: Interface) {
@@ -1012,42 +1159,37 @@ impl FethTap {
         };
 
         unsafe {
-            debug_assert_eq!(
-                libc::ioctl(sockfd, SIOCIFDESTROY, ptr::addr_of_mut!(req)),
-                0
-            );
-        }
-    }
-
-    #[inline]
-    fn close_fd(fd: RawFd) {
-        unsafe {
-            debug_assert_eq!(libc::close(fd), 0);
+            debug_assert_eq!(libc::ioctl(sockfd, SIOCIFDESTROY, &raw mut req), 0);
         }
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for FethTap {
-    fn as_fd(&self) -> BorrowedFd {
-        unsafe { BorrowedFd::borrow_raw(self.bpf_fd) }
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.bpf.as_fd()
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 impl AsRawFd for FethTap {
     fn as_raw_fd(&self) -> RawFd {
-        self.bpf_fd
+        self.bpf.as_raw_fd()
     }
 }
 
-impl Drop for FethTap {
-    fn drop(&mut self) {
-        Self::close_fd(self.bpf_fd);
-        Self::destroy_iface(self.ndrv_fd, self.peer_iface);
-        Self::destroy_iface(self.ndrv_fd, self.iface);
-        Self::close_fd(self.ndrv_fd);
+#[cfg(not(target_os = "windows"))]
+impl FromRawFd for FethTap {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self {
+            bpf: File::from_raw_fd(fd),
+        }
     }
 }
 
-// Lists all cloneable interfaces: SIOCIFGCLONERS
+#[cfg(not(target_os = "windows"))]
+impl IntoRawFd for FethTap {
+    fn into_raw_fd(self) -> RawFd {
+        self.bpf.into_raw_fd()
+    }
+}

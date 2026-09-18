@@ -30,16 +30,40 @@ pub(crate) struct TunImpl {
 }
 
 impl TunImpl {
+    /// Checks to see whether a TUN device of the given name exists.
+    #[inline]
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        Utun::exists(if_name)
+    }
+
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        Utun::exists_numbered(device_num)
+    }
+
+    /// Creates a new, unique TUN device and returns an open handle to it.
     #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Self { tun: Utun::new()? })
     }
 
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
+    pub fn new_compat(device_num: u32) -> io::Result<Self> {
         Ok(Self {
-            tun: Utun::new_named(if_name)?,
+            tun: Utun::new_compat(device_num)?,
         })
+    }
+
+    #[inline]
+    pub fn new_numbered(device_num: u32) -> io::Result<Self> {
+        Ok(Self {
+            tun: Utun::new_numbered(device_num)?,
+        })
+    }
+
+    #[inline]
+    pub fn destroy(self) -> io::Result<()> {
+        Ok(())
     }
 
     #[inline]
@@ -63,8 +87,13 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tun.set_state(state)
+    }
+
+    #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.tun.state()
     }
 
     #[inline]
@@ -73,7 +102,7 @@ impl TunImpl {
     }
 
     #[inline]
-    pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.tun.set_nonblocking(nonblocking)
     }
 
@@ -95,7 +124,7 @@ impl TunImpl {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for TunImpl {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.tun.as_fd()
     }
 }
@@ -112,17 +141,24 @@ pub(crate) struct TapImpl {
 }
 
 impl TapImpl {
-    #[inline]
-    pub fn new() -> io::Result<Self> {
-        Ok(Self {
-            tap: FethTap::new()?,
-        })
+    pub fn destroy(self) -> io::Result<()> {
+        self.tap.destroy()
     }
 
     #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        FethTap::exists(if_name)
+    }
+
+    #[inline]
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        FethTap::exists_numbered(device_num)
+    }
+
+    #[inline]
+    pub fn new_compat(device_num: u32) -> io::Result<Self> {
         Ok(Self {
-            tap: FethTap::new_named(Some(if_name), None)?,
+            tap: FethTap::new_compat(device_num)?,
         })
     }
 
@@ -147,7 +183,12 @@ impl TapImpl {
     }
 
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn state(&self) -> io::Result<DeviceState> {
+        self.tap.state()
+    }
+
+    #[inline]
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tap.set_state(state)
     }
 
@@ -157,7 +198,7 @@ impl TapImpl {
     }
 
     #[inline]
-    pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.tap.set_nonblocking(nonblocking)
     }
 
@@ -179,7 +220,7 @@ impl TapImpl {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for TapImpl {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.tap.as_fd()
     }
 }

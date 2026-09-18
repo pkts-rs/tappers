@@ -8,10 +8,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::io::IoSlice;
+use std::io::IoSliceMut;
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
-use std::{array, io, mem, ptr, str};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd};
+use std::{array, io, mem, str};
 
 use crate::libc_extra::*;
 use crate::RawFd;
@@ -33,32 +35,75 @@ const SIOCGIFNETMASK: libc::c_ulong = 0xc0206925;
 const SIOCSIFNETMASK: libc::c_ulong = 0x80206916;
 */
 
-// We use a custom `iovec` struct here because we don't want to do a *const to *mut conversion
-#[repr(C)]
-#[allow(non_camel_case_types)]
-pub struct iovec_const {
-    pub iov_base: *const libc::c_void,
-    pub iov_len: libc::size_t,
-}
-
+#[repr(transparent)]
 pub struct Utun {
-    fd: RawFd,
+    #[cfg(not(target_os = "windows"))]
+    fd: OwnedFd,
 }
 
 /// A UTUN interface that includes MacOS-specific TUN functionality.
 impl Utun {
+    #[inline]
+    pub fn exists(if_name: Interface) -> io::Result<bool> {
+        if &if_name.name_raw()[..4] != b"utun" || !if_name.name_raw()[4].is_ascii_digit() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "non-TUN interface name provided",
+            ));
+        }
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(match libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+                ..=-1 => return Err(io::Error::last_os_error()),
+                fd => fd,
+            })
+        };
+
+        let res = unsafe { libc::ioctl(sockfd.as_raw_fd(), SIOCGIFFLAGS, &raw mut req) };
+        let err = io::Error::last_os_error();
+        if res == 0 {
+            Ok(true)
+        } else if matches!(err.raw_os_error(), Some(libc::ENXIO)) {
+            Ok(false)
+        } else {
+            Err(err)
+        }
+    }
+
+    pub fn exists_numbered(device_num: u32) -> io::Result<bool> {
+        let if_name = Interface::new(format!("tun{}", device_num)).unwrap();
+        Self::exists(if_name)
+    }
+
     /// Creates a new TUN device.
     ///
     /// The interface name associated with this TUN device is chosen by the system, and can be
     /// retrieved via the [`name()`](Self::name) method.
+    #[inline]
     pub fn new() -> io::Result<Self> {
         Self::new_internal(0)
     }
 
-    /// Opens a TUN device with the given interface name `if_name`.
-    ///
-    /// If no TUN device exists for the given interface name, this method will create a new one.
+    #[inline]
+    pub(crate) fn new_compat(device_num: u32) -> io::Result<Self> {
+        Self::new_numbered(device_num)
+    }
+
+    /// Creates a new TUN device with the given interface name `if_name`.
+    #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
+        if &if_name.name_raw()[..4] != b"utun" || !matches!(if_name.name_raw()[4], b'0'..=b'9') {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "non-TUN interface name provided",
+            ));
+        }
+
         let len = if_name.name.iter().position(|b| *b == 0).unwrap_or(0);
 
         if len < 5 || &if_name.name[..4] != UTUN_PREFIX {
@@ -76,9 +121,8 @@ impl Utun {
         Self::new_numbered(n)
     }
 
-    /// Opens a TUN device with the given tun number `utun_number`.
-    ///
-    /// If no TUN device exists for the given interface name, this method will create a new one.
+    /// Creates a new TUN device with the given TUN number `utun_number`.
+    #[inline]
     pub fn new_numbered(utun_number: u32) -> io::Result<Self> {
         Self::new_internal(utun_number.checked_add(1).ok_or(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -86,11 +130,16 @@ impl Utun {
         ))?)
     }
 
+    #[inline]
     fn new_internal(sc_unit: u32) -> io::Result<Self> {
-        let fd = unsafe { libc::socket(libc::AF_SYSTEM, libc::SOCK_DGRAM, libc::SYSPROTO_CONTROL) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        let sockfd = unsafe {
+            OwnedFd::from_raw_fd(
+                match libc::socket(libc::AF_SYSTEM, libc::SOCK_DGRAM, libc::SYSPROTO_CONTROL) {
+                    ..=-1 => return Err(io::Error::last_os_error()),
+                    fd => fd,
+                },
+            )
+        };
 
         let mut utun_ctrl_iter = UTUN_CONTROL_NAME.iter();
         let mut info = libc::ctl_info {
@@ -105,13 +154,12 @@ impl Utun {
 
         if unsafe {
             libc::ioctl(
-                fd,
+                sockfd.as_raw_fd(),
                 libc::CTLIOCGINFO,
-                ptr::addr_of_mut!(info) as *mut libc::c_void,
+                (&raw mut info).cast::<libc::c_void>(),
             )
         } != 0
         {
-            Self::close_fd(fd);
             return Err(io::Error::last_os_error());
         }
 
@@ -125,19 +173,13 @@ impl Utun {
             sc_reserved: [0u32; 5],
         };
 
-        if unsafe {
-            libc::connect(
-                fd,
-                ptr::addr_of!(addr) as *const libc::sockaddr,
-                addrlen as u32,
-            )
-        } != 0
+        if unsafe { libc::connect(sockfd.as_raw_fd(), (&raw const addr).cast(), addrlen as u32) }
+            != 0
         {
-            Self::close_fd(fd);
             return Err(io::Error::last_os_error());
         }
 
-        Ok(Self { fd })
+        Ok(Self { fd: sockfd })
     }
 
     /// Retrieves the network-layer addresses assigned to the interface.
@@ -159,18 +201,19 @@ impl Utun {
     }
 
     /// Retrieves the name of the interface.
+    #[inline]
     pub fn name(&self) -> io::Result<Interface> {
         let mut name_buf = [0u8; Interface::MAX_INTERFACE_NAME_LEN + 1];
-        let name_ptr = ptr::addr_of_mut!(name_buf) as *mut libc::c_void;
+        let name_ptr = (&raw mut name_buf).cast();
         let mut name_len: u32 = Interface::MAX_INTERFACE_NAME_LEN as u32 + 1;
 
         match unsafe {
             libc::getsockopt(
-                self.fd,
+                self.fd.as_raw_fd(),
                 libc::SYSPROTO_CONTROL,
                 libc::UTUN_OPT_IFNAME,
                 name_ptr,
-                ptr::addr_of_mut!(name_len),
+                &raw mut name_len,
             )
         } {
             0 => Ok(Interface {
@@ -182,6 +225,7 @@ impl Utun {
     }
 
     /// Retrieves the Maximum Transmission Unit (MTU) of the TUN device.
+    #[inline]
     pub fn mtu(&self) -> io::Result<usize> {
         let if_name = self.name()?;
 
@@ -197,30 +241,10 @@ impl Utun {
         };
 
         unsafe {
-            match libc::ioctl(self.fd, SIOCGIFDEVMTU, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(self.fd.as_raw_fd(), SIOCGIFDEVMTU, &raw mut req) {
                 0 => Ok(req.ifr_ifru.ifru_devmtu.ifdm_current as usize),
                 _ => Err(io::Error::last_os_error()),
             }
-        }
-    }
-
-    /// Retrieves the current state of the TUN device (i.e. "up" or "down").
-    pub fn state(&self) -> io::Result<DeviceState> {
-        let if_name = self.name()?;
-
-        let mut req = libc::ifreq {
-            ifr_name: if_name.name_raw_char(),
-            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
-        };
-
-        if unsafe { libc::ioctl(self.fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        if unsafe { req.ifr_ifru.ifru_flags & libc::IFF_UP as i16 > 0 } {
-            Ok(DeviceState::Up)
-        } else {
-            Ok(DeviceState::Down)
         }
     }
 
@@ -233,7 +257,7 @@ impl Utun {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.fd, SIOCGIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.fd.as_raw_fd(), SIOCGIFFLAGS, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -244,11 +268,32 @@ impl Utun {
             }
         }
 
-        if unsafe { libc::ioctl(self.fd, SIOCSIFFLAGS, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.fd.as_raw_fd(), SIOCSIFFLAGS, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
         Ok(())
+    }
+
+    /// Retrieves the current state of the TUN device (i.e. "UP" or "DOWN").
+    #[inline]
+    pub fn state(&self) -> io::Result<DeviceState> {
+        let if_name = self.name()?;
+
+        let mut req = libc::ifreq {
+            ifr_name: if_name.name_raw_char(),
+            ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
+        };
+
+        if unsafe { libc::ioctl(self.fd.as_raw_fd(), SIOCGIFFLAGS, &raw mut req) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        if unsafe { req.ifr_ifru.ifru_flags & (libc::IFF_UP as i16) > 0 } {
+            Ok(DeviceState::Up)
+        } else {
+            Ok(DeviceState::Down)
+        }
     }
 
     /// Sends a packet out over the TUN device.
@@ -271,19 +316,10 @@ impl Utun {
             }
         };
 
-        let iov = [
-            iovec_const {
-                iov_base: family_prefix.as_ptr() as *const libc::c_void,
-                iov_len: family_prefix.len(),
-            },
-            iovec_const {
-                iov_base: buf.as_ptr() as *const libc::c_void,
-                iov_len: buf.len(),
-            },
-        ];
+        let iov = [IoSlice::new(family_prefix.as_slice()), IoSlice::new(buf)];
 
         unsafe {
-            match libc::writev(self.fd, iov.as_ptr() as *const libc::iovec, 2) {
+            match libc::writev(self.fd.as_raw_fd(), iov.as_ptr().cast(), 2) {
                 r @ 0.. => Ok((r as usize).saturating_sub(family_prefix.len())),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -294,18 +330,12 @@ impl Utun {
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         let mut family_prefix = [0u8; 4];
         let mut iov = [
-            libc::iovec {
-                iov_base: family_prefix.as_mut_ptr() as *mut libc::c_void,
-                iov_len: family_prefix.len(),
-            },
-            libc::iovec {
-                iov_base: buf.as_mut_ptr() as *mut libc::c_void,
-                iov_len: buf.len(),
-            },
+            IoSliceMut::new(family_prefix.as_mut_slice()),
+            IoSliceMut::new(buf),
         ];
 
         unsafe {
-            match libc::readv(self.fd, iov.as_mut_ptr(), 2) {
+            match libc::readv(self.fd.as_raw_fd(), iov.as_mut_ptr().cast(), 2) {
                 0..=3 => Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "insufficient bytes received from utun to form packet",
@@ -318,7 +348,7 @@ impl Utun {
 
     /// Indicates whether nonblocking is enabled for `read` and `write` operations on the UTUN device.
     pub fn nonblocking(&self) -> io::Result<bool> {
-        let flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(self.fd.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -328,7 +358,7 @@ impl Utun {
 
     /// Sets nonblocking mode for `read` and `write` operations on the UTUN device.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        let flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(self.fd.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -338,7 +368,7 @@ impl Utun {
             false => flags & !libc::O_NONBLOCK,
         };
 
-        if unsafe { libc::fcntl(self.fd, libc::F_SETFL, flags) } < 0 {
+        if unsafe { libc::fcntl(self.fd.as_raw_fd(), libc::F_SETFL, flags) } < 0 {
             return Err(io::Error::last_os_error());
         } else {
             Ok(())
@@ -351,7 +381,7 @@ impl Utun {
 
     /*
     fn delete_all_routes(&self) -> io::Result<()> {
-        let route_fd = unsafe { libc::socket(libc::PF_ROUTE, libc::SOCK_RAW, 0) };
+        let route_fd = unsafe { libc::socket(libc::PF_ROUTE, libc::SOCK_RAW | libc::SOCK_CLOEXEC, 0) };
         if route_fd < 0 {
             return Err(io::Error::last_os_error())
         }
@@ -398,7 +428,7 @@ impl Utun {
     #[inline]
     fn destroy_impl(&self) -> io::Result<()> {
         self.set_state(DeviceState::Down)?;
-        Self::close_fd(self.fd);
+        Self::close_fd(self.fd.as_raw_fd());
 
         // NOTE: MacOS has strange behavior for `utun` interfaces.
         //
@@ -426,20 +456,30 @@ impl Utun {
 
 #[cfg(not(target_os = "windows"))]
 impl AsFd for Utun {
-    fn as_fd(&self) -> BorrowedFd {
-        unsafe { BorrowedFd::borrow_raw(self.fd) }
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.fd.as_fd()
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 impl AsRawFd for Utun {
     fn as_raw_fd(&self) -> RawFd {
-        self.fd
+        self.fd.as_raw_fd()
     }
 }
 
-impl Drop for Utun {
-    fn drop(&mut self) {
-        self.destroy_impl().unwrap();
+#[cfg(not(target_os = "windows"))]
+impl FromRawFd for Utun {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self {
+            fd: OwnedFd::from_raw_fd(fd),
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl IntoRawFd for Utun {
+    fn into_raw_fd(self) -> RawFd {
+        self.fd.into_raw_fd()
     }
 }

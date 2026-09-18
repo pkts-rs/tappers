@@ -21,15 +21,26 @@ extern "C" {
     ) -> *const libc::c_char;
 }
 
-/*
 #[cfg(target_os = "dragonfly")]
 extern "C" {
-    pub fn fdevname_r(fd: libc::c_int, buf: *mut libc::c_char, len: libc::c_int) -> libc::c_int;
+    pub fn fdevname_r(fd: libc::c_int, buf: *mut libc::c_char, len: libc::size_t) -> libc::c_int;
 }
-*/
+
+#[cfg(target_os = "netbsd")]
+#[allow(non_camel_case_types)]
+type devmajor_t = i32;
+
+#[cfg(target_os = "netbsd")]
+extern "C" {
+    pub fn getdevmajor(name: *const libc::c_char, ty: libc::mode_t) -> devmajor_t;
+}
 
 #[cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "macos"))]
 pub const SCOPE6_ID_MAX: usize = 16;
+
+#[cfg(target_os = "netbsd")]
+#[allow(unused)]
+pub const TAPGIFNAME: libc::c_ulong = _IOR::<ifreq>(b'e', 0);
 
 #[allow(unused)]
 pub const IOCPARM_MASK: u64 = 0x1fff; // parameter length, at most 13 bits
@@ -212,6 +223,7 @@ pub struct ifdevmtu {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(unused)]
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct ifkpi {
@@ -823,6 +835,7 @@ pub struct ifdrv {
     pub ifd_data: *mut libc::c_void,
 }
 
+/*
 #[cfg(target_os = "macos")]
 #[repr(C)]
 pub struct sockaddr_ndrv {
@@ -830,6 +843,7 @@ pub struct sockaddr_ndrv {
     pub snd_family: libc::c_uchar,
     pub snd_name: [libc::c_uchar; libc::IFNAMSIZ],
 }
+*/
 
 // <net/if_fake_var.h>
 #[cfg(target_os = "macos")]
@@ -862,8 +876,8 @@ pub const SIOCIFCREATE: libc::c_ulong = _IOWR::<ifreq>(b'i', 120);
 pub const SIOCIFCREATE: libc::c_ulong = _IOW::<ifreq>(b'i', 122);
 #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
 pub const SIOCIFCREATE2: libc::c_ulong = _IOWR::<ifreq>(b'i', 124);
-//#[cfg(target_os = "macos")]
-//pub const SIOCGDRVSPEC: libc::c_ulong = _IOWR::<ifdrv>(b'i', 123);
+#[cfg(target_os = "macos")]
+pub const SIOCGDRVSPEC: libc::c_ulong = _IOWR::<ifdrv>(b'i', 123);
 #[cfg(target_os = "macos")]
 pub const SIOCSDRVSPEC: libc::c_ulong = _IOW::<ifdrv>(b'i', 123);
 #[cfg(any(
@@ -989,8 +1003,10 @@ pub const RTM_NEWADDR: libc::c_int = 0x16;
 
 #[cfg(target_os = "macos")]
 pub const AF_LINK: libc::c_int = 18;
+/*
 #[cfg(target_os = "macos")]
 pub const AF_NDRV: libc::c_int = 27;
+*/
 
 #[allow(unused)]
 pub const ND6_INFINITE_LIFETIME: u32 = u32::MAX;

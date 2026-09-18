@@ -33,25 +33,9 @@ pub struct AsyncTap {
 
 impl AsyncTap {
     /// Creates a new, unique TAP device.
+    #[cfg(not(target_os = "windows"))]
     #[inline]
-    pub fn new() -> io::Result<Self> {
-        let mut tap = Tap::new()?;
-        tap.set_nonblocking(true)?;
-
-        // SAFETY: `AsyncTap` ensures that the RawFd is extracted from `io` in its drop()
-        // implementation so that the descriptor isn't closed twice.
-        let io = unsafe { UdpSocket::from_raw_fd(tap.as_raw_fd()) };
-
-        Ok(Self {
-            tap,
-            io: ManuallyDrop::new(io),
-        })
-    }
-
-    /// Opens or creates a TAP device of the given name.
-    #[inline]
-    pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        let mut tap = Tap::new_named(if_name)?;
+    pub fn new(tap: Tap) -> io::Result<Self> {
         tap.set_nonblocking(true)?;
 
         // SAFETY: `AsyncTap` ensures that the RawFd is extracted from `io` in its drop()
@@ -72,19 +56,19 @@ impl AsyncTap {
 
     /// Sets the adapter state of the TAP device (e.g. "up" or "down").
     #[inline]
-    pub fn set_state(&mut self, state: DeviceState) -> io::Result<()> {
+    pub fn set_state(&self, state: DeviceState) -> io::Result<()> {
         self.tap.set_state(state)
     }
 
     /// Sets the adapter state of the TAP device to "up".
     #[inline]
-    pub fn set_up(&mut self) -> io::Result<()> {
+    pub fn set_up(&self) -> io::Result<()> {
         self.tap.set_state(DeviceState::Up)
     }
 
     /// Sets the adapter state of the TAP device to "down".
     #[inline]
-    pub fn set_down(&mut self) -> io::Result<()> {
+    pub fn set_down(&self) -> io::Result<()> {
         self.tap.set_state(DeviceState::Down)
     }
 

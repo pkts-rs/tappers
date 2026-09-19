@@ -19,7 +19,7 @@ use std::net::IpAddr;
 use crate::{AddAddress, AddressInfo};
 use crate::{DeviceState, Interface, Tap};
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(doc, target_os = "windows")))]
 use async_io::Async;
 
 #[cfg(target_os = "windows")]
@@ -35,7 +35,7 @@ impl TapWrapper {
 
 /// A cross-platform asynchronous TAP interface, suitable for tunnelling link-layer packets.
 pub struct AsyncTap {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(doc, target_os = "windows")))]
     tap: Async<Tap>,
     #[cfg(target_os = "windows")]
     tap: TapWrapper,

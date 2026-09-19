@@ -15,17 +15,19 @@ use std::io;
 #[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
 
+#[cfg(any(not(doc), not(target_os = "windows")))]
+use crate::Tap;
 #[cfg(not(target_os = "windows"))]
 use crate::{AddAddress, AddressInfo};
-use crate::{DeviceState, Interface, Tap};
+use crate::{DeviceState, Interface};
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(doc, target_os = "windows")))]
 use async_io::Async;
 
-#[cfg(target_os = "windows")]
+#[cfg(all(not(doc), target_os = "windows"))]
 struct TapWrapper(Tap);
 
-#[cfg(target_os = "windows")]
+#[cfg(all(not(doc), target_os = "windows"))]
 impl TapWrapper {
     #[inline]
     pub fn get_ref(&self) -> &Tap {
@@ -35,20 +37,21 @@ impl TapWrapper {
 
 /// A cross-platform asynchronous TAP interface, suitable for tunnelling link-layer packets.
 pub struct AsyncTap {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(doc, target_os = "windows")))]
     tap: Async<Tap>,
-    #[cfg(target_os = "windows")]
+    #[cfg(all(not(doc), target_os = "windows"))]
     tap: TapWrapper,
 }
 
 impl AsyncTap {
     /// Creates a new, unique TAP device.
+    #[cfg(any(not(doc), not(target_os = "windows")))]
     #[inline]
     pub fn new(tap: Tap) -> io::Result<Self> {
         Self::new_impl(tap)
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(doc, target_os = "windows")))]
     fn new_impl(tap: Tap) -> io::Result<Self> {
         tap.set_nonblocking(true)?;
 
@@ -57,7 +60,7 @@ impl AsyncTap {
         })
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(all(not(doc), target_os = "windows"))]
     fn new_impl(tap: Tap) -> io::Result<Self> {
         tap.set_nonblocking(true)?;
 

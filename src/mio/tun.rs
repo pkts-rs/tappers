@@ -14,22 +14,29 @@ use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
 
+#[cfg(any(not(doc), not(target_os = "windows")))]
+use crate::Tun;
 use crate::{AddAddress, AddressInfo};
-use crate::{DeviceState, Interface, Tun};
+use crate::{DeviceState, Interface};
 
+#[cfg(any(not(doc), feature = "mio"))]
 use mio::event::Source;
+#[cfg(any(not(doc), feature = "mio"))]
 use mio::net::UdpSocket;
+#[cfg(any(not(doc), feature = "mio"))]
 use mio::{Interest, Registry, Token};
 
 /// A cross-platform asynchronous TUN interface, suitable for tunnelling network-layer packets.
 pub struct AsyncTun {
+    #[cfg(not(doc))]
     tun: Tun,
+    #[cfg(any(not(doc), feature = "mio"))]
     io: ManuallyDrop<UdpSocket>,
 }
 
 impl AsyncTun {
     /// Creates a new, unique TUN device.
-    #[cfg(any(feature = "portable-racy", not(target_os = "openbsd")))]
+    #[cfg(any(not(doc), not(target_os = "windows")))]
     #[inline]
     pub fn new(tun: Tun) -> io::Result<Self> {
         tun.set_nonblocking(true)?;
@@ -128,6 +135,7 @@ impl AsyncTun {
     }
 }
 
+#[cfg(any(not(doc), feature = "mio"))]
 impl Source for AsyncTun {
     fn register(
         &mut self,

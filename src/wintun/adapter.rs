@@ -10,7 +10,7 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-#[cfg(not(doc))]
+#[cfg(any(not(doc), target_os = "windows"))]
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::NonNull;
 use std::{io, ptr};

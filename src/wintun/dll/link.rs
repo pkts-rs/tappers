@@ -21,6 +21,7 @@ use windows_sys::Win32::NetworkManagement::Ndis::NET_LUID_LH;
 
 use super::{WintunAdapter, WintunLoggerCallback, WintunPacket, WintunSession};
 
+#[cfg(any(not(doc), all(target_os = "windows", feature = "wintun")))]
 #[link(name = "wintun", kind = "raw-dylib")]
 extern "C" {
     /// Creates a new Wintun adapter.

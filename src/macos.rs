@@ -21,7 +21,7 @@ pub use utun::Utun;
 
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
 
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
@@ -136,6 +136,22 @@ impl AsRawFd for TunImpl {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
+impl FromRawFd for TunImpl {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self {
+            tun: Utun::from_raw_fd(fd),
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl IntoRawFd for TunImpl {
+    fn into_raw_fd(self) -> RawFd {
+        self.tun.into_raw_fd()
+    }
+}
+
 pub(crate) struct TapImpl {
     tap: FethTap,
 }
@@ -229,5 +245,21 @@ impl AsFd for TapImpl {
 impl AsRawFd for TapImpl {
     fn as_raw_fd(&self) -> RawFd {
         self.tap.as_raw_fd()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl FromRawFd for TapImpl {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self {
+            tap: FethTap::from_raw_fd(fd),
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl IntoRawFd for TapImpl {
+    fn into_raw_fd(self) -> RawFd {
+        self.tap.into_raw_fd()
     }
 }

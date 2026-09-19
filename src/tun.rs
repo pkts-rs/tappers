@@ -12,7 +12,7 @@ use std::io;
 #[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
 
 #[cfg(not(target_os = "windows"))]
 use crate::AddAddress;
@@ -323,6 +323,22 @@ impl AsRawFd for Tun {
 impl AsFd for Tun {
     fn as_fd(&self) -> BorrowedFd<'_> {
         self.inner.as_fd()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl FromRawFd for Tun {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self {
+            inner: TunImpl::from_raw_fd(fd),
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl IntoRawFd for Tun {
+    fn into_raw_fd(self) -> RawFd {
+        self.inner.into_raw_fd()
     }
 }
 

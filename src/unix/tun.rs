@@ -403,12 +403,14 @@ impl Tun {
     fn new_impl() -> io::Result<Self> {
         let file = match OpenOptions::new().read(true).write(true).open("/dev/tun") {
             Ok(file) => file,
+            /*
             #[cfg(all(target_os = "freebsd", feature = "portable-racy"))]
             Err(e) if matches!(e.raw_os_error(), Some(libc::ENOENT)) => {
                 // net.link.tun.devfs_cloning was set to 0
                 // Fall back to iterating through possible TUN numbers
                 return Self::new_impl_racy();
             }
+            */
             Err(e) => return Err(e),
         };
 

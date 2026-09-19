@@ -68,7 +68,7 @@ impl Tun {
     ///   TUN devices.
     /// * [io::ErrorKind::Other] - some other unspecified platform-specific error occurred.
     ///
-    /// # Platform Considerations
+    /// # Portability
     ///
     /// MacOS and Windows (wintun) do not implement any kind of persistent TUN device capability;
     /// as such, TUN devices can only be created via [`Tun::new`] or similar on these platforms.
@@ -150,8 +150,10 @@ impl Tun {
         target_os = "dragonfly",
         target_os = "netbsd",
         target_os = "openbsd",
-        target_os = "windows",
-        all(feature = "portable-racy", not(target_os = "macos"))
+        all(
+            feature = "portable-racy",
+            not(any(target_os = "macos", target_os = "windows"))
+        )
     ))]
     #[inline]
     pub fn open(device_num: u32) -> io::Result<Self> {
@@ -163,7 +165,7 @@ impl Tun {
     /// Creates a new, unique TUN device and returns an open handle to it.
     ///
     /// The interface name associated with this TUN device is chosen by the system, and can be
-    /// retrieved via the [`name()`](Self::name) method. The created TUN device is not persistent,
+    /// retrieved via the [`name()`](Self::name) method. The created TUN device is ephemeral,
     /// meaning that it will be destroyed when the returned `Tun` object goes out of scope.
     #[cfg(all(
         not(target_os = "netbsd"),
@@ -177,6 +179,10 @@ impl Tun {
         })
     }
 
+    /// Opens or creates a TUN device of the given device number, returning an open handle to it.
+    ///
+    /// This method is designed to work natively across all platforms; as such, the returned TUN
+    /// device _may_ be either persistent or ephemeral
     pub fn new_compat(device_num: u32) -> io::Result<Self> {
         Ok(Self {
             inner: TunImpl::new_compat(device_num)?,
@@ -185,8 +191,11 @@ impl Tun {
 
     /// Opens or creates a TUN device of the given device number, returning an open handle to it.
     ///
-    /// The created TUN device is not persistent, meaning that it will be destroyed when the
-    /// returned `Tun` object goes out of scope.
+    /// If created, the TUN device is ephemeral, meaning that it will be destroyed when the returned
+    /// `Tun` instance goes out of scope. If opened (which can occur on platforms other than MacOS
+    /// and Windows), the TUN device is persistent and will remain after the `Tun` instance is
+    /// dropped. To guarantee an ephemeral TUN, use [`Tun::new`]; to guarantee a persistent TUN, use
+    /// [`Tun::open`].
     #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
     #[inline]
     pub fn new_numbered(device_num: u32) -> io::Result<Self> {
@@ -232,12 +241,24 @@ impl Tun {
     }
 
     /// Sets the blocking mode of the TUN device for reads/writes.
+    ///
+    /// If `nonblocking` is set to `true`, subsequent calls to [`read()`](io::Read::read)/
+    /// [`recv()`](`Self::recv`) or [`write()`](io::Write::write)/[`send()`](Self::send) will return
+    /// immediately with an error of kind [`io::ErrorKind::WouldBlock`] instead of hanging when
+    /// no packets are available or no buffer space is available to transmit packets, respectively.
+    /// If set to `false`, calls to the above methods will block until completion.
     #[inline]
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.inner.set_nonblocking(nonblocking)
     }
 
     /// Retrieves the blocking mode of the TUN device.
+    ///
+    /// The returned value is `true`, subsequent calls to [`read()`](io::Read::read)/
+    /// [`recv()`](`Self::recv`) or [`write()`](io::Write::write)/[`send()`](Self::send) will return
+    /// immediately with an error of kind [`io::ErrorKind::WouldBlock`] instead of hanging when
+    /// no packets are available or no buffer space is available to transmit packets, respectively.
+    /// If the returned value is `false`, calls to the above methods will block until completion.
     #[inline]
     pub fn nonblocking(&self) -> io::Result<bool> {
         self.inner.nonblocking()
@@ -258,10 +279,6 @@ impl Tun {
     pub fn addrs(&self) -> io::Result<Vec<AddressInfo>> {
         self.inner.addrs()
     }
-
-    // TODO: this used to be the case, but now it's not??
-    //    /// MacOS additionally requires a destination address when assigning an IPv6 address to a TUN
-    //    /// device. Neither FreeBSD nor DragonFlyBSD include this restriction.
 
     /// Assigns an IP address to the interface.
     ///
@@ -287,19 +304,19 @@ impl Tun {
         self.inner.remove_addr(addr)
     }
 
-    /// Sends a packet over the TUN device.
+    /// Sends a single packet over the TUN device.
     #[inline]
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         self.inner.send(buf)
     }
 
-    /// Receives a packet over the TUN device.
+    /// Receives a single packet over the TUN device.
     #[inline]
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.recv(buf)
     }
 
-    /// The HANDLE used to poll for incoming packet events in Windows.
+    /// Returns the HANDLE used to poll for incoming packet events in Windows.
     ///
     /// # Safety
     ///

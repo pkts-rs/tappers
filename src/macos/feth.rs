@@ -19,9 +19,6 @@ use crate::libc_extra::*;
 use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface, MacAddr};
 
-const NET_LINK_FAKE_LRO: *const libc::c_char =
-    b"net.link.fake.lro\0".as_ptr() as *const libc::c_char;
-
 const BPF_BUFFER_LEN: i32 = 131072;
 
 /// Fake Ethernet ("feth") TAP device interface that includes MacOS-specific functionality.
@@ -171,7 +168,7 @@ impl FethTap {
     }
 
     pub fn exists(if_name: Interface) -> io::Result<bool> {
-        if &if_name.name_raw()[..4] != b"feth" || !matches!(if_name.name_raw()[4], b'0'..=b'9') {
+        if &if_name.name_raw()[..4] != b"feth" || !if_name.name_raw()[4].is_ascii_digit() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "non-TUN interface name provided",
@@ -348,9 +345,9 @@ impl FethTap {
 
         unsafe {
             match libc::sysctlbyname(
-                NET_LINK_FAKE_LRO,
-                ptr::addr_of_mut!(lro) as *mut libc::c_void,
-                ptr::addr_of_mut!(lro_len),
+                c"net.link.fake.lro".as_ptr(),
+                (&raw mut lro).cast(),
+                &raw mut lro_len,
                 ptr::null_mut(),
                 0,
             ) {
@@ -369,7 +366,7 @@ impl FethTap {
 
         unsafe {
             match libc::sysctlbyname(
-                NET_LINK_FAKE_LRO,
+                c"net.link.fake.lro".as_ptr(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 (&raw mut lro).cast(),
@@ -917,7 +914,7 @@ impl FethTap {
         };
 
         if unsafe { libc::fcntl(self.bpf.as_raw_fd(), libc::F_SETFL, flags) } < 0 {
-            return Err(io::Error::last_os_error());
+            Err(io::Error::last_os_error())
         } else {
             Ok(())
         }
@@ -1149,7 +1146,7 @@ impl FethTap {
             err = Some(io::Error::last_os_error());
         };
 
-        err.map_or(Ok(()), |e| Err(e))
+        err.map_or(Ok(()), Err)
     }
 
     fn destroy_iface(sockfd: RawFd, iface: Interface) {

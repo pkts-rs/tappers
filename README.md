@@ -1,6 +1,6 @@
 # Tappers
 
-[![Cross-Platform]][CI Status] [![Latest Version]][crates.io] [![Documentation]][docs.rs] [![v1.70+]][Rust 1.70]
+[![Cross-Platform]][CI Status] [![Latest Version]][crates.io] [![Documentation]][docs.rs] [![v1.85+]][Rust 1.85]
 
 [Cross-Platform]: https://github.com/pkts-rs/tappers/actions/workflows/full_ci.yml/badge.svg
 [CI Status]: https://github.com/pkts-rs/tappers/actions
@@ -8,8 +8,8 @@
 [docs.rs]: https://docs.rs/tappers/
 [Latest Version]: https://img.shields.io/crates/v/tappers.svg
 [crates.io]: https://crates.io/crates/tappers
-[v1.70+]: https://img.shields.io/badge/MSRV-rustc_1.70+-blue.svg
-[Rust 1.70]: https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html
+[v1.85+]: https://img.shields.io/badge/MSRV-rustc_1.85+-blue.svg
+[Rust 1.85]: https://blog.rust-lang.org/2023/06/01/Rust-1.85.0.html
 
 ---
 

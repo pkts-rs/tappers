@@ -8,10 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//!
-//!
-//!
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{cmp, io, ptr, thread};
@@ -57,7 +53,7 @@ impl<'a> TunSession<'a> {
     /// Returns a `HANDLE` that can be used to poll for incoming packets.
     #[inline]
     pub fn read_handle(&self) -> HANDLE {
-        Self::read_handle_impl(&self.adapter, self.session)
+        Self::read_handle_impl(self.adapter, self.session)
     }
 
     #[inline]
@@ -82,7 +78,7 @@ impl<'a> TunSession<'a> {
         // 2. Watch out for mutation to the WintunSession while another reference is relying on its
         // state (e.g. iterator invalidation).
         Self::send_impl(
-            &self.adapter,
+            self.adapter,
             self.session,
             self.nonblocking.load(Ordering::Relaxed),
             buf,
@@ -139,7 +135,7 @@ impl<'a> TunSession<'a> {
         // 2. Watch out for mutation to the WintunSession while another reference is relying on its
         // state (e.g. iterator invalidation).
         Self::recv_impl(
-            &self.adapter,
+            self.adapter,
             self.session,
             self.nonblocking.load(Ordering::Relaxed),
             buf,

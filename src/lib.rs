@@ -202,6 +202,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::os::fd::RawFd;
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+#[cfg(not(target_os = "windows"))]
+use std::ptr;
 #[cfg(all(doc, target_os = "windows"))]
 pub type RawFd = i32;
 #[cfg(not(target_os = "windows"))]
@@ -209,7 +211,7 @@ use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::str::FromStr;
-use std::{array, io, ptr};
+use std::{array, io};
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{ERROR_DEV_NOT_EXIST, ERROR_NO_DATA};
@@ -748,10 +750,10 @@ impl Interface {
         match unsafe { GetAdapterIndex(self.name.as_ptr(), &raw mut index) } {
             0 => Ok(index),
             ERROR_DEV_NOT_EXIST | ERROR_NO_DATA => Err(io::ErrorKind::NotFound.into()),
-            e => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("GetAdapterIndex returned error {}", e),
-            )),
+            e => Err(io::Error::other(format!(
+                "GetAdapterIndex returned error {}",
+                e
+            ))),
         }
     }
 
@@ -1060,80 +1062,77 @@ impl Interface {
 
         let if_list = IfList::new(buf.as_slice());
         for message in if_list {
-            match message? {
-                SysctlMessage::NewAddress(new_addr) => {
-                    let mut dst = None;
-                    let mut mask = None;
-                    let mut addr = None;
-                    let mut brd = None;
+            if let SysctlMessage::NewAddress(new_addr) = message? {
+                let mut dst = None;
+                let mut mask = None;
+                let mut addr = None;
+                let mut brd = None;
 
-                    for ip_addr in new_addr.addrs() {
-                        match ip_addr? {
-                            SysctlAddr::Destination(a) => dst = Some(a),
-                            SysctlAddr::Gateway(_) => (),
-                            SysctlAddr::Netmask(a) => mask = Some(a),
-                            SysctlAddr::Address(a) => addr = Some(a),
-                            SysctlAddr::Broadcast(a) => brd = Some(a),
-                            SysctlAddr::Other => (),
-                        }
+                for ip_addr in new_addr.addrs() {
+                    match ip_addr? {
+                        SysctlAddr::Destination(a) => dst = Some(a),
+                        SysctlAddr::Gateway(_) => (),
+                        SysctlAddr::Netmask(a) => mask = Some(a),
+                        SysctlAddr::Address(a) => addr = Some(a),
+                        SysctlAddr::Broadcast(a) => brd = Some(a),
+                        SysctlAddr::Other => (),
                     }
+                }
 
-                    if let Some(ip_addr) = addr {
-                        match ip_addr {
-                            IpAddr::V4(addr) => {
-                                let broadcast = match brd {
-                                    Some(IpAddr::V4(a)) => Some(a),
-                                    _ => None,
-                                };
+                if let Some(ip_addr) = addr {
+                    match ip_addr {
+                        IpAddr::V4(addr) => {
+                            let broadcast = match brd {
+                                Some(IpAddr::V4(a)) => Some(a),
+                                _ => None,
+                            };
 
-                                let destination = match dst {
-                                    Some(IpAddr::V4(a)) => Some(a),
-                                    _ => None,
-                                };
+                            let destination = match dst {
+                                Some(IpAddr::V4(a)) => Some(a),
+                                _ => None,
+                            };
 
-                                let netmask = match mask {
-                                    Some(IpAddr::V4(a)) => {
-                                        Some(32u8 - u32::from(a).trailing_zeros() as u8)
-                                    }
-                                    _ => None,
-                                };
+                            let netmask = match mask {
+                                Some(IpAddr::V4(a)) => {
+                                    Some(32u8 - u32::from(a).trailing_zeros() as u8)
+                                }
+                                _ => None,
+                            };
 
-                                addrs.push(AddressInfo::V4(AddressInfoV4 {
-                                    addr,
-                                    broadcast,
-                                    destination,
-                                    netmask,
-                                }));
-                            }
-                            IpAddr::V6(addr) => {
-                                let broadcast = match brd {
-                                    Some(IpAddr::V6(a)) => Some(a),
-                                    _ => None,
-                                };
+                            addrs.push(AddressInfo::V4(AddressInfoV4 {
+                                addr,
+                                broadcast,
+                                destination,
+                                netmask,
+                            }));
+                        }
+                        IpAddr::V6(addr) => {
+                            let broadcast = match brd {
+                                Some(IpAddr::V6(a)) => Some(a),
+                                _ => None,
+                            };
 
-                                let destination = match dst {
-                                    Some(IpAddr::V6(a)) => Some(a),
-                                    _ => None,
-                                };
+                            let destination = match dst {
+                                Some(IpAddr::V6(a)) => Some(a),
+                                _ => None,
+                            };
 
-                                let netmask = match mask {
-                                    Some(IpAddr::V6(a)) => {
-                                        Some(128u8 - u128::from(a).trailing_zeros() as u8)
-                                    }
-                                    _ => None,
-                                };
+                            let netmask = match mask {
+                                Some(IpAddr::V6(a)) => {
+                                    Some(128u8 - u128::from(a).trailing_zeros() as u8)
+                                }
+                                _ => None,
+                            };
 
-                                addrs.push(AddressInfo::V6(AddressInfoV6 {
-                                    addr,
-                                    broadcast,
-                                    destination,
-                                    netmask,
-                                }));
-                            }
+                            addrs.push(AddressInfo::V6(AddressInfoV6 {
+                                addr,
+                                broadcast,
+                                destination,
+                                netmask,
+                            }));
                         }
                     }
                 }
-                _ => (),
             }
         }
 
@@ -1735,7 +1734,7 @@ impl FromStr for MacAddr {
         if let Some(delim @ (b':' | b'-')) = s.as_bytes().get(2) {
             // Hexadecimal separated by colons (XX:XX:XX:XX:XX:XX) or dashes (XX-XX-XX-XX-XX-XX)
 
-            if s.bytes().len() != 17 {
+            if s.len() != 17 {
                 return Err(AddrConversionError::new("invalid length MAC address"));
             }
 
@@ -1770,7 +1769,7 @@ impl FromStr for MacAddr {
         } else if let Some(b'.') = s.as_bytes().get(4) {
             // Hexadecimal separated by dots (XXXX.XXXX.XXXX)
 
-            if s.bytes().len() != 14 {
+            if s.len() != 14 {
                 return Err(AddrConversionError::new("invalid length MAC address"));
             }
 
@@ -1805,7 +1804,7 @@ impl FromStr for MacAddr {
         } else {
             // Unseparated hexadecimal (XXXXXXXXXXXX)
 
-            if s.bytes().len() != 12 {
+            if s.len() != 12 {
                 return Err(AddrConversionError::new("invalid length MAC address"));
             }
 

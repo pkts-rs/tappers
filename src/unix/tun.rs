@@ -465,7 +465,7 @@ impl Tun {
     #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
     #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        if &if_name.name_raw()[..3] != b"tun" || !matches!(if_name.name_raw()[3], b'0'..=b'9') {
+        if &if_name.name_raw()[..3] != b"tun" || !if_name.name_raw()[3].is_ascii_digit() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "non-TUN interface name provided",
@@ -769,7 +769,7 @@ impl Tun {
     #[cfg(any(target_os = "netbsd", target_os = "openbsd"))]
     #[inline]
     pub fn send_impl(&self, buf: &[u8]) -> io::Result<usize> {
-        if buf.len() == 0 {
+        if buf.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "packet must not be empty",
@@ -819,7 +819,7 @@ impl Tun {
         };
 
         if unsafe { libc::fcntl(self.inner.as_raw_fd(), libc::F_SETFL, flags) } < 0 {
-            return Err(io::Error::last_os_error());
+            Err(io::Error::last_os_error())
         } else {
             Ok(())
         }

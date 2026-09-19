@@ -12,8 +12,9 @@
 
 #![allow(non_snake_case)]
 
+use std::ffi::CStr;
 use std::ptr::NonNull;
-use std::{io, mem, ptr};
+use std::{io, mem};
 
 use windows_sys::core::{GUID, PCWSTR};
 use windows_sys::Win32::Foundation::{BOOL, HANDLE};
@@ -22,7 +23,7 @@ use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 
 use super::{WintunAdapter, WintunLoggerCallback, WintunPacket, WintunSession};
 
-const WINTUN_LIB: *const u8 = b"wintun.dll\0".as_ptr();
+const WINTUN_LIB: *const u8 = c"wintun.dll".as_ptr() as *const u8;
 
 pub struct Wintun {
     api: WintunApi,
@@ -34,9 +35,9 @@ struct WintunApi {
     /// # Arguments
     ///
     /// * `name` - The name of the adapter. Must be null-terminated and less than `MAX_ADAPTER_NAME`
-    /// characters.
+    ///   characters.
     /// * `tunnel_type` - The name of the adapter tunnel type. Must be null-terminated and less than
-    /// `MAX_ADAPTER_NAME` characters.
+    ///   `MAX_ADAPTER_NAME` characters.
     WintunCreateAdapter: unsafe extern "C" fn(
         name: PCWSTR,
         tunnel_type: PCWSTR,
@@ -78,7 +79,7 @@ struct WintunApi {
     /// and `ERROR_FILE_NOT_FOUND` will be added to the error queue.
     WintunGetRunningDriverVersion: unsafe extern "C" fn() -> u32,
 
-    /// Sets the callback function to be calledd at each log event.
+    /// Sets the callback function to be called at each log event.
     WintunSetLogger: unsafe extern "C" fn(log_callback: WintunLoggerCallback),
 
     /// Starts a Wintun session.
@@ -87,7 +88,7 @@ struct WintunApi {
     ///
     /// * `adapter` - The adapter the session will be running on
     /// * `capacity` - The capacity of the ring buffer used for the session. Must be a power of
-    /// two.
+    ///   two.
     WintunStartSession:
         unsafe extern "C" fn(adapter: *mut WintunAdapter, capacity: u32) -> *mut WintunSession,
 
@@ -134,7 +135,7 @@ struct WintunApi {
     ///
     /// * `session` - The Wintun session the packets will be sent over
     /// * `packet_size` - The exact packet size (must be less than or equal to
-    /// `WINTUN_MAX_IP_PACKET_SIZE`).
+    ///   `WINTUN_MAX_IP_PACKET_SIZE`).
     ///
     /// # Errors
     ///
@@ -143,8 +144,8 @@ struct WintunApi {
     ///
     /// * `ERROR_HANDLE_EOF` - The Wintun adapter is terminating.
     /// * `ERROR_BUFFER_OVERFLOW` - There is insufficient space in the Wintun session's internal
-    /// buffer to allocate an additional buffer. The application should generally wait some time for
-    /// packets to be sent over the interface and then try again.
+    ///   buffer to allocate an additional buffer. The application should generally wait some time for
+    ///   packets to be sent over the interface and then try again.
     ///
     /// # Safety
     ///
@@ -170,44 +171,70 @@ impl Wintun {
     /// This function must only be used for creating function pointer types.
     unsafe fn resolve_func(
         lib: *mut libc::c_void,
-        func_name: &[u8],
+        func_name: &'static CStr,
     ) -> io::Result<*const libc::c_void> {
-        GetProcAddress(lib, func_name.as_ptr())
+        GetProcAddress(lib, func_name.as_ptr().cast())
             .ok_or(io::Error::last_os_error())
             .map(|f| f as *const libc::c_void)
     }
 
+    #[allow(clippy::missing_transmute_annotations)]
     unsafe fn resolve_api(lib: *mut libc::c_void) -> io::Result<WintunApi> {
         Ok(WintunApi {
-            WintunCreateAdapter: mem::transmute(Self::resolve_func(lib, b"WintunCreateAdapter\0")?),
-            WintunOpenAdapter: mem::transmute(Self::resolve_func(lib, b"WintunOpenAdapter\0")?),
-            WintunCloseAdapter: mem::transmute(Self::resolve_func(lib, b"WintunCloseAdapter\0")?),
-            WintunDeleteDriver: mem::transmute(Self::resolve_func(lib, b"WintunDeleteAdapter\0")?),
-            WintunGetAdapterLUID: mem::transmute(Self::resolve_func(
+            WintunCreateAdapter: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
                 lib,
-                b"WintunGetAdapterLUID\0",
+                c"WintunCreateAdapter",
             )?),
-            WintunGetRunningDriverVersion: mem::transmute(Self::resolve_func(
+            WintunOpenAdapter: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
                 lib,
-                b"WintunGetRunningDriverVersion\0",
+                c"WintunOpenAdapter",
             )?),
-            WintunSetLogger: mem::transmute(Self::resolve_func(lib, b"WintunSetLogger\0")?),
-            WintunStartSession: mem::transmute(Self::resolve_func(lib, b"WintunStartSession\0")?),
-            WintunEndSession: mem::transmute(Self::resolve_func(lib, b"WintunEndSession\0")?),
-            WintunGetReadWaitEvent: mem::transmute(Self::resolve_func(
+            WintunCloseAdapter: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
                 lib,
-                b"WintunGetReadWaitEvent\0",
+                c"WintunCloseAdapter",
             )?),
-            WintunReceivePacket: mem::transmute(Self::resolve_func(lib, b"WintunReceivePacket\0")?),
-            WintunReleaseReceivePacket: mem::transmute(Self::resolve_func(
+            WintunDeleteDriver: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
                 lib,
-                b"WintunReleaseReceivePacket\0",
+                c"WintunDeleteAdapter",
             )?),
-            WintunAllocateSendPacket: mem::transmute(Self::resolve_func(
+            WintunGetAdapterLUID: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
                 lib,
-                b"WintunAllocateSendPacket\0",
+                c"WintunGetAdapterLUID",
             )?),
-            WintunSendPacket: mem::transmute(Self::resolve_func(lib, b"WintunSendPacket\0")?),
+            WintunGetRunningDriverVersion: mem::transmute::<*const libc::c_void, _>(
+                Self::resolve_func(lib, c"WintunGetRunningDriverVersio")?,
+            ),
+            WintunSetLogger: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
+                lib,
+                c"WintunSetLogger",
+            )?),
+            WintunStartSession: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
+                lib,
+                c"WintunStartSession",
+            )?),
+            WintunEndSession: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
+                lib,
+                c"WintunEndSession",
+            )?),
+            WintunGetReadWaitEvent: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
+                lib,
+                c"WintunGetReadWaitEvent",
+            )?),
+            WintunReceivePacket: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
+                lib,
+                c"WintunReceivePacket",
+            )?),
+            WintunReleaseReceivePacket: mem::transmute::<*const libc::c_void, _>(
+                Self::resolve_func(lib, c"WintunReleaseReceivePacket")?,
+            ),
+            WintunAllocateSendPacket: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
+                lib,
+                c"WintunAllocateSendPacket",
+            )?),
+            WintunSendPacket: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
+                lib,
+                c"WintunSendPacket",
+            )?),
         })
     }
 
@@ -294,14 +321,14 @@ impl Wintun {
         let mut luid = NET_LUID_LH { Value: 0 };
 
         unsafe {
-            (self.api.WintunGetAdapterLUID)(adapter, ptr::addr_of_mut!(luid));
+            (self.api.WintunGetAdapterLUID)(adapter, &raw mut luid);
         }
 
         luid
     }
 
-    pub unsafe fn set_logger(&self, log_callback: WintunLoggerCallback) {
-        (self.api.WintunSetLogger)(log_callback);
+    pub fn set_logger(&self, log_callback: WintunLoggerCallback) {
+        unsafe { (self.api.WintunSetLogger)(log_callback) }
     }
 
     pub fn start_session(

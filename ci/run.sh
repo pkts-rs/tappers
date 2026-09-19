@@ -10,6 +10,12 @@ set -ex
 
 RUST=${TOOLCHAIN}
 
+cat << 'EOF' >> Cargo.toml
+
+[patch.crates-io]
+rustix = { git = "https://github.com/nathaniel-bennett/rustix.git", branch = "0.38" }
+EOF
+
 echo "Testing Rust ${RUST} on ${OS}"
 
 case "${OS}" in

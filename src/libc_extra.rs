@@ -111,7 +111,7 @@ pub const fn NLMSG_ALIGN(len: usize) -> usize {
 #[allow(non_snake_case)]
 pub const fn RT_ROUNDUP(len: usize) -> usize {
     if len == 0 {
-        return mem::size_of::<libc::c_long>();
+        mem::size_of::<libc::c_long>()
     } else {
         1 + ((len - 1) | (mem::size_of::<libc::c_long>() - 1))
     }

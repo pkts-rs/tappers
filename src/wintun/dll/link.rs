@@ -225,8 +225,10 @@ impl Wintun {
         luid
     }
 
-    pub unsafe fn set_logger(&self, log_callback: WintunLoggerCallback) {
-        WintunSetLogger(log_callback);
+    pub fn set_logger(&self, log_callback: WintunLoggerCallback) {
+        unsafe {
+            WintunSetLogger(log_callback);
+        }
     }
 
     pub fn start_session(

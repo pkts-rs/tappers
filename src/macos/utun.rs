@@ -97,7 +97,7 @@ impl Utun {
     /// Creates a new TUN device with the given interface name `if_name`.
     #[inline]
     pub fn new_named(if_name: Interface) -> io::Result<Self> {
-        if &if_name.name_raw()[..4] != b"utun" || !matches!(if_name.name_raw()[4], b'0'..=b'9') {
+        if &if_name.name_raw()[..4] != b"utun" || !if_name.name_raw()[4].is_ascii_digit() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "non-TUN interface name provided",
@@ -298,7 +298,7 @@ impl Utun {
 
     /// Sends a packet out over the TUN device.
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        if buf.len() == 0 {
+        if buf.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "packet must not be empty",
@@ -369,7 +369,7 @@ impl Utun {
         };
 
         if unsafe { libc::fcntl(self.fd.as_raw_fd(), libc::F_SETFL, flags) } < 0 {
-            return Err(io::Error::last_os_error());
+            Err(io::Error::last_os_error())
         } else {
             Ok(())
         }

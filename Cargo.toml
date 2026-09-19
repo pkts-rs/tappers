@@ -2,7 +2,6 @@
 name = "tappers"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 description = "Cross-platform TUN, TAP and vETH interfaces"
-# 1.66 - `std::os::fd` stabilized
 rust-version = "1.85" 
 version = "0.4.3"
 license = "MIT OR Apache-2.0"
@@ -14,10 +13,6 @@ categories = ["network-programming"]
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
-
-[patch.crates-io]
-rustix = { git = "https://github.com/bytecodealliance/rustix", branch = "main" }
-rustix_0_38 = { package = "rustix", git = "https://github.com/nathaniel-bennett/rustix.git", branch = "0.38" }
 
 [features]
 default = []

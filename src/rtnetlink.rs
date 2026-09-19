@@ -147,11 +147,11 @@ impl NlmsgPayload {
             NlmsgPayload::DeleteAddress(nlmsg_delete_address) => {
                 nlmsg_delete_address.serialize(buf)
             }
-            NlmsgPayload::NewRoute(nlmsg_new_route) => nlmsg_new_route.serialize(buf),
-            NlmsgPayload::DeleteRoute(nlmsg_delete_route) => nlmsg_delete_route.serialize(buf),
-            NlmsgPayload::NewNeighbor(nlmsg_new_neighbor) => nlmsg_new_neighbor.serialize(buf),
+            NlmsgPayload::NewRoute(nlmsg_new_route) => todo!(), // nlmsg_new_route.serialize(buf),
+            NlmsgPayload::DeleteRoute(nlmsg_delete_route) => todo!(), // nlmsg_delete_route.serialize(buf),
+            NlmsgPayload::NewNeighbor(nlmsg_new_neighbor) => todo!(), // nlmsg_new_neighbor.serialize(buf),
             NlmsgPayload::DeleteNeighbor(nlmsg_delete_neighbor) => {
-                nlmsg_delete_neighbor.serialize(buf)
+                todo!() // nlmsg_delete_neighbor.serialize(buf)
             }
         }
     }
@@ -282,7 +282,7 @@ impl AddressAttr {
                         buf.extend(rta_type.to_ne_bytes());
                         buf.extend(u32::from(ipv4_addr).to_be_bytes());
                         let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                        buf.extend(iter::repeat(0).take(padded_len));
+                        buf.extend(std::iter::repeat_n(0, padded_len));
                     }
                     IpAddr::V6(ipv6_addr) => {
                         let rta_len = 20u16;
@@ -290,7 +290,7 @@ impl AddressAttr {
                         buf.extend(rta_type.to_ne_bytes());
                         buf.extend(u128::from(ipv6_addr).to_be_bytes());
                         let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                        buf.extend(iter::repeat(0).take(padded_len));
+                        buf.extend(std::iter::repeat_n(0, padded_len));
                     }
                 }
             }
@@ -303,7 +303,7 @@ impl AddressAttr {
                         buf.extend(rta_type.to_ne_bytes());
                         buf.extend(u32::from(ipv4_addr).to_be_bytes());
                         let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                        buf.extend(iter::repeat(0).take(padded_len));
+                        buf.extend(std::iter::repeat_n(0, padded_len));
                     }
                     IpAddr::V6(ipv6_addr) => {
                         let rta_len = 20u16;
@@ -311,7 +311,7 @@ impl AddressAttr {
                         buf.extend(rta_type.to_ne_bytes());
                         buf.extend(u128::from(ipv6_addr).to_be_bytes());
                         let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                        buf.extend(iter::repeat(0).take(padded_len));
+                        buf.extend(std::iter::repeat_n(0, padded_len));
                     }
                 }
             }
@@ -322,7 +322,7 @@ impl AddressAttr {
                 buf.extend(rta_type.to_ne_bytes());
                 buf.extend(cstring.as_bytes_with_nul());
                 let padded_len = NLMSG_ALIGN(rta_len) - rta_len;
-                buf.extend(iter::repeat(0).take(padded_len));
+                buf.extend(std::iter::repeat_n(0, padded_len));
             }
             AddressAttr::Broadcast(ip_addr) => {
                 let rta_type = libc::IFA_BROADCAST;
@@ -333,7 +333,7 @@ impl AddressAttr {
                         buf.extend(rta_type.to_ne_bytes());
                         buf.extend(u32::from(ipv4_addr).to_be_bytes());
                         let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                        buf.extend(iter::repeat(0).take(padded_len));
+                        buf.extend(std::iter::repeat_n(0, padded_len));
                     }
                     IpAddr::V6(ipv6_addr) => {
                         let rta_len = 20u16;
@@ -341,7 +341,7 @@ impl AddressAttr {
                         buf.extend(rta_type.to_ne_bytes());
                         buf.extend(u128::from(ipv6_addr).to_be_bytes());
                         let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                        buf.extend(iter::repeat(0).take(padded_len));
+                        buf.extend(std::iter::repeat_n(0, padded_len));
                     }
                 }
             }
@@ -354,7 +354,7 @@ impl AddressAttr {
                         buf.extend(rta_type.to_ne_bytes());
                         buf.extend(u32::from(ipv4_addr).to_be_bytes());
                         let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                        buf.extend(iter::repeat(0).take(padded_len));
+                        buf.extend(std::iter::repeat_n(0, padded_len));
                     }
                     IpAddr::V6(ipv6_addr) => {
                         let rta_len = 20u16;
@@ -362,7 +362,7 @@ impl AddressAttr {
                         buf.extend(rta_type.to_ne_bytes());
                         buf.extend(u128::from(ipv6_addr).to_be_bytes());
                         let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                        buf.extend(iter::repeat(0).take(padded_len));
+                        buf.extend(std::iter::repeat_n(0, padded_len));
                     }
                 }
             }
@@ -375,7 +375,7 @@ impl AddressAttr {
                     unsafe { mem::transmute_copy(cache_info) };
                 buf.extend(&cache_info_bytes);
                 let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                buf.extend(iter::repeat(0).take(padded_len));
+                buf.extend(std::iter::repeat_n(0, padded_len));
             }
             AddressAttr::Unspecified(unspec) => {
                 let rta_type = libc::IFA_UNSPEC;
@@ -384,7 +384,7 @@ impl AddressAttr {
                 buf.extend(rta_type.to_ne_bytes());
                 buf.extend(unspec);
                 let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                buf.extend(iter::repeat(0).take(padded_len));
+                buf.extend(std::iter::repeat_n(0, padded_len));
             }
             AddressAttr::Unknown(ty, unknown) => {
                 let rta_type = *ty;
@@ -393,7 +393,7 @@ impl AddressAttr {
                 buf.extend(rta_type.to_ne_bytes());
                 buf.extend(unknown);
                 let padded_len = NLMSG_ALIGN(rta_len as usize) - rta_len as usize;
-                buf.extend(iter::repeat(0).take(padded_len));
+                buf.extend(std::iter::repeat_n(0, padded_len));
             }
         }
     }
@@ -409,9 +409,11 @@ pub struct NlmsgNewRoute {
 }
 
 impl NlmsgNewRoute {
+    /*
     fn serialize(&self, buf: &mut Vec<u8>) {
         todo!()
     }
+    */
 }
 
 #[derive(Clone, Debug)]
@@ -424,9 +426,11 @@ pub struct NlmsgDeleteRoute {
 }
 
 impl NlmsgDeleteRoute {
+    /*
     fn serialize(&self, buf: &mut Vec<u8>) {
         todo!()
     }
+    */
 }
 
 #[derive(Clone, Debug)]
@@ -472,9 +476,11 @@ pub enum RouteAttr {
 }
 
 impl RouteAttr {
+    /*
     fn serialize(&self, buf: &mut Vec<u8>) {
         todo!()
     }
+    */
 }
 
 #[derive(Clone, Debug)]
@@ -487,9 +493,11 @@ pub struct NlmsgNewNeighbor {
 }
 
 impl NlmsgNewNeighbor {
+    /*
     fn serialize(&self, buf: &mut Vec<u8>) {
         todo!()
     }
+    */
 }
 
 #[derive(Clone, Debug)]
@@ -502,9 +510,11 @@ pub struct NlmsgDeleteNeighbor {
 }
 
 impl NlmsgDeleteNeighbor {
+    /*
     fn serialize(&self, buf: &mut Vec<u8>) {
         todo!()
     }
+    */
 }
 
 #[derive(Clone, Debug)]
@@ -520,9 +530,11 @@ pub enum NeighborAttr {
 }
 
 impl NeighborAttr {
+    /*
     fn serialize(&self, buf: &mut Vec<u8>) {
         todo!()
     }
+    */
 }
 
 // =============================================================================

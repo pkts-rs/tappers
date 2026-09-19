@@ -33,7 +33,7 @@ use crate::{AddAddress, AddressInfo, DeviceState, Interface};
 
 #[cfg(target_os = "openbsd")]
 fn tap_major() -> u32 {
-    #[cfg(any(target_arch = "powerpc64"))]
+    #[cfg(target_arch = "powerpc64")]
     {
         75
     }
@@ -53,7 +53,7 @@ fn tap_major() -> u32 {
     {
         104
     }
-    #[cfg(any(target_arch = "sparc64"))]
+    #[cfg(target_arch = "sparc64")]
     {
         135
     }
@@ -741,7 +741,7 @@ impl Tap {
         };
 
         if unsafe { libc::fcntl(self.inner.as_raw_fd(), libc::F_SETFL, flags) } < 0 {
-            return Err(io::Error::last_os_error());
+            Err(io::Error::last_os_error())
         } else {
             Ok(())
         }

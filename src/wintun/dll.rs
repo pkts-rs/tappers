@@ -44,7 +44,7 @@ pub type WintunPacket = NonNull<u8>;
 /// #Arguments
 /// * `level` The log level of the message
 /// * `timestamp` The time at which the message was logged, measured in 100ns intervals since
-/// 1601-01-01 UTC
+///   1601-01-01 UTC
 /// * `message` The text of the log message
 pub type WintunLoggerCallback =
     unsafe extern "C" fn(level: WintunLoggerLevel, timestamp: u64, message: PCWSTR);

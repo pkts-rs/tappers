@@ -9,16 +9,15 @@
 // except according to those terms.
 
 use std::ffi::CStr;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd};
 use std::{array, io, ptr};
 
 use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
-
-use super::DEV_NET_TUN;
 
 // Need to add to libc
 #[cfg(not(doc))]
@@ -38,7 +37,7 @@ const TUNSETPERSIST: libc::Ioctl = 0x400454CB;
 
 /// A TUN interface that includes Linux-specific functionality.
 pub struct Tun {
-    fd: RawFd,
+    inner: File,
 }
 
 impl Tun {
@@ -58,18 +57,16 @@ impl Tun {
             },
         };
 
-        // TODO: unify `ErrorKind`s returned
-        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
+        let inner = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+
+        if unsafe { libc::ioctl(inner.as_raw_fd(), TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            Self::close_fd(fd);
-            return Err(io::Error::last_os_error());
-        }
-
-        let tun = Self { fd };
+        let tun = Self { inner };
         tun.set_persistent(true)?;
         drop(tun);
 
@@ -125,11 +122,11 @@ impl Tun {
 
         unsafe {
             if libc::ioctl(fd, TUNSETIFF, &raw mut req) < 0 {
-                return Err(io::Error::last_os_error().into());
+                return Err(io::Error::last_os_error());
             }
 
             if libc::ioctl(fd, TUNSETPERSIST, 0 as libc::c_int) < 0 {
-                return Err(io::Error::last_os_error().into());
+                return Err(io::Error::last_os_error());
             }
         }
 
@@ -186,10 +183,10 @@ impl Tun {
             },
         };
 
-        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
 
         // TUNSETIFF will always create a new device if one doesn't already exist. This is contrary
         // to the intended behavior of `open()`. We check for interface existence here before
@@ -202,12 +199,11 @@ impl Tun {
             ));
         }
 
-        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            Self::close_fd(fd);
+        if unsafe { libc::ioctl(file.as_raw_fd(), TUNSETIFF, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        Ok(Self { fd })
+        Ok(Self { inner: file })
     }
 
     /// Opens an existing TUN device of the given name.
@@ -234,18 +230,18 @@ impl Tun {
             },
         };
 
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+
         // TODO: unify `ErrorKind`s returned
-        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
+
+        if unsafe { libc::ioctl(file.as_raw_fd(), TUNSETIFF, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            Self::close_fd(fd);
-            return Err(io::Error::last_os_error());
-        }
-
-        Ok(Self { fd })
+        Ok(Self { inner: file })
     }
 
     #[inline]
@@ -274,17 +270,16 @@ impl Tun {
             },
         };
 
-        let fd = unsafe { libc::open(DEV_NET_TUN, libc::O_RDWR | libc::O_CLOEXEC) };
-        if fd < 0 {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/net/tun")?;
+
+        if unsafe { libc::ioctl(file.as_raw_fd(), TUNSETIFF, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
-        if unsafe { libc::ioctl(fd, TUNSETIFF, ptr::addr_of_mut!(req)) } != 0 {
-            Self::close_fd(fd);
-            return Err(io::Error::last_os_error());
-        }
-
-        Ok(Self { fd })
+        Ok(Self { inner: file })
     }
 
     /// Opens or creates a TUN device of the given device number, returning an open handle to it.
@@ -312,7 +307,7 @@ impl Tun {
         };
 
         unsafe {
-            match libc::ioctl(self.fd, TUNSETPERSIST, persist) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNSETPERSIST, persist) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -334,7 +329,7 @@ impl Tun {
         };
 
         unsafe {
-            match libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNGETIFF, ptr::addr_of_mut!(req)) {
                 0.. => Ok(req.ifr_ifru.ifru_flags & (IFF_PERSIST as i16) > 0),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -349,7 +344,7 @@ impl Tun {
         };
 
         unsafe {
-            match libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNGETIFF, &raw mut req) {
                 0.. => Interface::from_cstr(CStr::from_ptr(req.ifr_name.as_ptr())),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -391,7 +386,7 @@ impl Tun {
         };
 
         unsafe {
-            match libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNGETIFF, &raw mut req) {
                 0.. => {
                     if (req.ifr_ifru.ifru_flags & libc::IFF_UP as i16) == 0 {
                         Ok(DeviceState::Down)
@@ -411,7 +406,7 @@ impl Tun {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        if unsafe { libc::ioctl(self.fd, TUNGETIFF, ptr::addr_of_mut!(req)) } != 0 {
+        if unsafe { libc::ioctl(self.inner.as_raw_fd(), TUNGETIFF, &raw mut req) } != 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -511,27 +506,17 @@ impl Tun {
 
     /// Receives a packet over the TUN device.
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        unsafe {
-            match libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) {
-                r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
+        (&self.inner).read(buf)
     }
 
     /// Sends a packet out over the TUN device.
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        unsafe {
-            match libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) {
-                r @ 0.. => Ok(r as usize),
-                _ => Err(io::Error::last_os_error()),
-            }
-        }
+        (&self.inner).write(buf)
     }
 
     /// Indicates whether nonblocking is enabled for `read` and `write` operations on the TUN device.
     pub fn nonblocking(&self) -> io::Result<bool> {
-        let flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(self.inner.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -541,7 +526,7 @@ impl Tun {
 
     /// Sets nonblocking mode for `read` and `write` operations on the TUN device.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        let flags = unsafe { libc::fcntl(self.fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(self.inner.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -551,7 +536,7 @@ impl Tun {
             false => flags & !libc::O_NONBLOCK,
         };
 
-        if unsafe { libc::fcntl(self.fd, libc::F_SETFL, flags) } < 0 {
+        if unsafe { libc::fcntl(self.inner.as_raw_fd(), libc::F_SETFL, flags) } < 0 {
             Err(io::Error::last_os_error())
         } else {
             Ok(())
@@ -564,7 +549,7 @@ impl Tun {
     /// TUN devices have a default Ethernet link type of `ARPHRD_ETHER`.
     pub fn set_linktype(&self, linktype: u32) -> io::Result<()> {
         unsafe {
-            match libc::ioctl(self.fd, TUNSETLINK, linktype) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNSETLINK, linktype) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -579,7 +564,7 @@ impl Tun {
         };
 
         unsafe {
-            match libc::ioctl(self.fd, TUNSETDEBUG, debug) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNSETDEBUG, debug) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -590,7 +575,7 @@ impl Tun {
     /// on the device.
     pub fn set_owner(&self, owner_id: u32) -> io::Result<()> {
         unsafe {
-            match libc::ioctl(self.fd, TUNSETOWNER, owner_id) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNSETOWNER, owner_id) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -601,7 +586,7 @@ impl Tun {
     /// perform operations on the device.
     pub fn set_group(&self, group_id: u32) -> io::Result<()> {
         unsafe {
-            match libc::ioctl(self.fd, TUNSETGROUP, group_id) {
+            match libc::ioctl(self.inner.as_raw_fd(), TUNSETGROUP, group_id) {
                 0.. => Ok(()),
                 _ => Err(io::Error::last_os_error()),
             }
@@ -619,19 +604,29 @@ impl Tun {
 #[cfg(not(target_os = "windows"))]
 impl AsFd for Tun {
     fn as_fd(&self) -> BorrowedFd<'_> {
-        unsafe { BorrowedFd::borrow_raw(self.fd) }
+        self.inner.as_fd()
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 impl AsRawFd for Tun {
     fn as_raw_fd(&self) -> RawFd {
-        self.fd
+        self.inner.as_raw_fd()
     }
 }
 
-impl Drop for Tun {
-    fn drop(&mut self) {
-        Self::close_fd(self.fd);
+#[cfg(not(target_os = "windows"))]
+impl FromRawFd for Tun {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self {
+            inner: File::from_raw_fd(fd),
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl IntoRawFd for Tun {
+    fn into_raw_fd(self) -> RawFd {
+        self.inner.into_raw_fd()
     }
 }

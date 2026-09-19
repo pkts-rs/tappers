@@ -85,11 +85,11 @@ impl TunAdapter {
     /// best to call this function after [`create()`](Self::create) or [`open()`](Self::open).
     pub fn driver_version() -> Result<u32, io::Error> {
         let wintun = WINTUN_API.get_or_try_init(Wintun::new)?;
-        Ok(wintun.driver_version()?)
+        wintun.driver_version()
     }
 
     /// Sets the callback function to be called whenever Wintun has an event to log.
-    pub unsafe fn set_log_callback(cb: WintunLoggerCallback) -> Result<(), io::Error> {
+    pub fn set_log_callback(cb: WintunLoggerCallback) -> Result<(), io::Error> {
         let wintun = WINTUN_API.get_or_try_init(Wintun::new)?;
         wintun.set_logger(cb);
         Ok(())
@@ -141,10 +141,10 @@ impl TunAdapter {
             0 => match row.dwAdminStatus {
                 MIB_IF_ADMIN_STATUS_UP => Ok(DeviceState::Up),
                 MIB_IF_ADMIN_STATUS_DOWN => Ok(DeviceState::Down),
-                s => Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("invalid device state {} returned", s),
-                )),
+                s => Err(io::Error::other(format!(
+                    "invalid device state {} returned",
+                    s
+                ))),
             },
             e => Err(io::Error::from_raw_os_error(e as i32)),
         }

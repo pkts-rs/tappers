@@ -16,21 +16,24 @@ use std::net::IpAddr;
 #[cfg(target_os = "windows")]
 use std::sync::Arc;
 
+#[cfg(any(not(doc), not(target_os = "windows"), feature = "wintun"))]
+use crate::Tun;
 #[cfg(not(target_os = "windows"))]
 use crate::{AddAddress, AddressInfo};
-use crate::{DeviceState, Interface, Tun};
+use crate::{DeviceState, Interface};
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(doc, target_os = "windows")))]
 use tokio::io::unix::AsyncFd;
 
 /// A convenience type used to make internal operations consistent between Windows and Unix.
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", not(doc)))]
 #[derive(Clone)]
 struct TunWrapper(Arc<Tun>);
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", not(doc)))]
 impl TunWrapper {
     /// Returns a reference to the underlying `Tun` function.
+    #[cfg(any(not(doc), feature = "wintun"))]
     pub fn get_ref(&self) -> &Tun {
         &self.0
     }
@@ -38,20 +41,21 @@ impl TunWrapper {
 
 /// A cross-platform asynchronous TUN interface, suitable for tunnelling network-layer packets.
 pub struct AsyncTun {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(doc, target_os = "windows")))]
     tun: AsyncFd<Tun>,
-    #[cfg(target_os = "windows")]
+    #[cfg(all(target_os = "windows", not(doc)))]
     tun: TunWrapper,
 }
 
 impl AsyncTun {
     /// Creates a new, unique TUN device.
+    #[cfg(any(not(doc), not(target_os = "windows"), feature = "wintun"))]
     #[inline]
     pub fn new(tun: Tun) -> io::Result<Self> {
         Self::new_impl(tun)
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(all(not(doc), target_os = "windows"))]
     #[inline]
     pub fn new_impl(tun: Tun) -> io::Result<Self> {
         tun.set_nonblocking(true)?;
@@ -61,7 +65,7 @@ impl AsyncTun {
         })
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(doc, target_os = "windows")))]
     #[inline]
     pub fn new_impl(tun: Tun) -> io::Result<Self> {
         tun.set_nonblocking(true)?;

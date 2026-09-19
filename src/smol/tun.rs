@@ -16,18 +16,20 @@ use std::net::IpAddr;
 #[cfg(target_os = "windows")]
 use std::sync::Arc;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(doc, target_os = "windows")))]
 use async_io::Async;
 
+#[cfg(any(not(doc), not(target_os = "windows"), feature = "wintun"))]
+use crate::Tun;
 #[cfg(not(target_os = "windows"))]
 use crate::{AddAddress, AddressInfo};
-use crate::{DeviceState, Interface, Tun};
+use crate::{DeviceState, Interface};
 
-#[cfg(target_os = "windows")]
+#[cfg(all(not(doc), target_os = "windows"))]
 #[derive(Clone)]
 struct TunWrapper(Arc<Tun>);
 
-#[cfg(target_os = "windows")]
+#[cfg(all(not(doc), target_os = "windows"))]
 impl TunWrapper {
     #[inline]
     pub fn get_ref(&self) -> &Tun {
@@ -37,20 +39,21 @@ impl TunWrapper {
 
 /// A cross-platform asynchronous TUN interface, suitable for tunnelling network-layer packets.
 pub struct AsyncTun {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(doc, target_os = "windows")))]
     tun: Async<Tun>,
-    #[cfg(target_os = "windows")]
+    #[cfg(all(not(doc), target_os = "windows"))]
     tun: TunWrapper,
 }
 
 impl AsyncTun {
     /// Creates a new, unique TUN device.
+    #[cfg(any(not(doc), not(target_os = "windows"), feature = "wintun"))]
     #[inline]
     pub fn new(tun: Tun) -> io::Result<Self> {
         Self::new_impl(tun)
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(all(not(doc), target_os = "windows"))]
     #[inline]
     pub fn new_impl(tun: Tun) -> io::Result<Self> {
         tun.set_nonblocking(true)?;
@@ -60,7 +63,7 @@ impl AsyncTun {
         })
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(doc, target_os = "windows")))]
     #[inline]
     pub fn new_impl(tun: Tun) -> io::Result<Self> {
         tun.set_nonblocking(true)?;

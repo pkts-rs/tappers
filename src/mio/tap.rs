@@ -19,8 +19,11 @@ use crate::Tap;
 use crate::{AddAddress, AddressInfo};
 use crate::{DeviceState, Interface};
 
+#[cfg(any(not(doc), feature = "mio"))]
 use mio::event::Source;
+#[cfg(any(not(doc), feature = "mio"))]
 use mio::net::UdpSocket;
+#[cfg(any(not(doc), feature = "mio"))]
 use mio::{Interest, Registry, Token};
 
 /// A cross-platform asynchronous TAP interface, suitable for tunnelling link-layer packets.
@@ -28,6 +31,7 @@ pub struct AsyncTap {
     #[cfg(not(target_os = "windows"))]
     tap: Tap,
     /// SAFETY: file descriptor/handle is closed when `tap` goes out of scope, so this doesn't need to.
+    #[cfg(any(not(doc), feature = "mio"))]
     io: ManuallyDrop<UdpSocket>,
 }
 
@@ -118,6 +122,7 @@ impl AsyncTap {
     }
 }
 
+#[cfg(any(not(doc), feature = "mio"))]
 impl Source for AsyncTap {
     fn register(
         &mut self,

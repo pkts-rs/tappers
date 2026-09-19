@@ -50,7 +50,7 @@ impl Tap {
         target_os = "windows"
     )))]
     #[inline]
-    pub fn create() -> io::Result<Interface> {
+    pub fn create() -> io::Result<u32> {
         TapImpl::create()
     }
 

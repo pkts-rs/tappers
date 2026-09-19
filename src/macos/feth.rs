@@ -35,7 +35,7 @@ impl FethTap {
     /// The interface name associated with this TAP device will be "feth" with a device number
     /// appended (e.g. "feth0", "feth1"), and can be retrieved via the [`name()`](Self::name)
     /// method.
-    pub fn create() -> io::Result<()> {
+    pub fn create() -> io::Result<u32> {
         Self::create_named(None, None)
     }
 
@@ -53,7 +53,7 @@ impl FethTap {
     pub fn create_numbered(
         adapter_if_number: Option<u32>,
         sink_if_number: Option<u32>,
-    ) -> io::Result<()> {
+    ) -> io::Result<u32> {
         let iface = match adapter_if_number {
             Some(n) => Some(Interface::new_raw(format!("feth{}", n).as_bytes())?),
             None => None,
@@ -79,7 +79,7 @@ impl FethTap {
     pub fn create_named(
         adapter_if_name: Option<Interface>,
         sink_if_name: Option<Interface>,
-    ) -> io::Result<()> {
+    ) -> io::Result<u32> {
         let mut adapter_if_name = adapter_if_name.unwrap_or(Interface::new_raw(b"feth")?);
         let mut sink_if_name = sink_if_name.unwrap_or(Interface::new_raw(b"feth")?);
 
@@ -155,12 +155,15 @@ impl FethTap {
             return Err(err);
         }
 
-        Ok(())
+        adapter_if_name.device_number().ok_or(io::Error::new(
+            io::ErrorKind::Other,
+            "malformed TUN name returned from interface creation",
+        ))
     }
 
     pub(crate) fn new_compat(device_num: u32) -> io::Result<Self> {
         match Self::create_numbered(Some(device_num), None) {
-            Ok(()) => (),
+            Ok(_) => (),
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
             Err(e) => return Err(e),
         }

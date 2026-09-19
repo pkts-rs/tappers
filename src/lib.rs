@@ -67,6 +67,9 @@
 //! # }
 //! ```
 //!
+//!
+//!
+//!
 //! Tappers additionally allows for more complex configuration of interfaces:
 //!
 //! ```no_run
@@ -124,6 +127,26 @@
 //! # }
 //! ```
 
+/*
+/// ```no_run
+/// use std::io;
+/// # #[cfg(not(target_os = "windows"))]
+/// use tappers::Tun;
+/// # #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+/// fn create_nonatomic() -> io::Result<Interface> {
+///     for device_num in 0u32..1024 {
+///         match Tun::create_numbered(device_num) {
+///             Ok(()) => return Ok(device_num),
+///             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
+///             Err(e) => return Err(e),
+///         }
+///     }a
+///
+///     Err(io::Error::new(io::ErrorKind::Other, "all available TUN devicee numbers in use"))
+/// }
+///
+/// ```
+*/
 // TODO: handle EINTR where applicable
 // TODO: add CLOEXEC to all sockets
 
@@ -210,6 +233,8 @@ pub type RawFd = i32;
 use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
+#[cfg(not(target_os = "windows"))]
+use std::str;
 use std::str::FromStr;
 use std::{array, io};
 
@@ -695,6 +720,40 @@ impl Interface {
                 is_catchall: false,
             }),
         }
+    }
+
+    pub fn device_number(&self) -> Option<u32> {
+        self.device_number_impl()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn device_number_impl(&self) -> Option<u32> {
+        let end = self.name.iter().position(|&b| b == 0x00)?;
+        let start = self.name[..end].iter().position(|b| b.is_ascii_digit())?;
+        str::from_utf8(&self.name[start..end])
+            .ok()?
+            .parse::<u32>()
+            .ok()
+    }
+
+    #[cfg(target_os = "windows")]
+    fn device_number_impl(&self) -> Option<u32> {
+        let end = self.name.iter().position(|&b| b == 0x00)?;
+        let start = self.name[..end]
+            .iter()
+            .position(|b| matches!(b, 0x0030..=0x0039))?;
+
+        let mut device_num = 0u32;
+        for c in &self.name[start..end] {
+            if !matches!(c, 0x0030..=0x0039) {
+                return None;
+            }
+
+            device_num *= 10;
+            device_num += (*c - 0x0030) as u32;
+        }
+
+        Some(device_num)
     }
 
     /// Indicates whether the interface can currently be found on the system.

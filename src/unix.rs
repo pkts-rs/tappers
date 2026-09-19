@@ -47,7 +47,7 @@ pub(crate) struct TunImpl {
 impl TunImpl {
     #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
     #[inline]
-    pub fn create() -> io::Result<Interface> {
+    pub fn create() -> io::Result<u32> {
         Tun::create()
     }
 
@@ -188,7 +188,7 @@ pub(crate) struct TapImpl {
 impl TapImpl {
     #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
     #[inline]
-    pub fn create() -> io::Result<Interface> {
+    pub fn create() -> io::Result<u32> {
         Tap::create()
     }
 

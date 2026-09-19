@@ -85,7 +85,7 @@ impl Tap {
     /// only supported on certain platforms.
     #[cfg(any(target_os = "dragonfly", target_os = "freebsd"))]
     #[inline]
-    pub fn create() -> io::Result<Interface> {
+    pub fn create() -> io::Result<u32> {
         let sockfd = unsafe {
             OwnedFd::from_raw_fd(
                 match libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) {
@@ -117,7 +117,11 @@ impl Tap {
             return Err(io::Error::last_os_error());
         }
 
-        Ok(unsafe { Interface::from_raw(req.ifr_name.map(|c| c as u8)) })
+        let if_name = unsafe { Interface::from_raw(req.ifr_name.map(|c| c as u8)) };
+        if_name.device_number().ok_or(io::Error::new(
+            io::ErrorKind::Other,
+            "malformed TUN name returned from interface creation",
+        ))
     }
 
     /// Creates a new TAP device of the given name.

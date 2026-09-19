@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// TODO: change to OwnedFd inside
-
 use std::io;
 #[cfg(not(target_os = "windows"))]
 use std::net::IpAddr;
@@ -42,23 +40,44 @@ use windows_sys::Win32::Foundation::HANDLE;
 #[cfg(not(target_os = "windows"))]
 use crate::AddressInfo;
 
-/// A cross-platform TUN interface, suitable for tunnelling network-layer packets.
+/// A cross-platform TUN interface, suitable for tunnelling network-layer (IPv4/IPv6) packets.
 #[repr(transparent)]
 pub struct Tun {
     inner: TunImpl,
 }
 
-// *BSD and MacOS all strictly name interfaces, so we can infer type from iface name.
-// Linux doesn't strictly name interfaces, but there appears to be a netlink call based on
-// `strace ip -details link show` that returns interface type information.
-// We can just call open() for Wintun and then immediately close the tunnel.
+// * [io::ErrorKind::InvalidInput] (DragonflyBSD only) - the `if_tap` kernel module is not
+//   loaded.
 
 impl Tun {
-    /// Creates a new persistent TUN device with a unique device number assigned and returns its
-    /// interface name.
+    /// Creates a new persistent TUN device, returning its device number.
     ///
-    /// The created TUN device may subsequently be opened using [`Tun::open`] or [`Tun::new_named`]. The created TUN
-    /// device is persistent until OS reboot unless it is explicitly destroyed.
+    /// This function will atomically assign the lowest unused TUN device number to the returned
+    /// device. The created TUN device may subsequently be opened using [`Tun::open`] or
+    /// [`Tun::new_named`]. The created device is persistent until OS reboot unless it is explicitly
+    /// destroyed via a call to [`Tun::destroy`] or [`Tun::destroy_numbered`].
+    ///
+    /// # Errors
+    ///
+    /// On failure, this function will return an error with one of the following [`io::ErrorKind`]s:
+    /// * [io::ErrorKind::PermissionDenied] - the calling application did not have the right
+    ///   privileges to open a TUN device, or else was constrained by an OS-level security policy
+    ///   that forbids creation of TUN devices. Most operating systems require elevated privileges
+    ///   (e.g., `CAP_NET_ADMIN` in Linux) to create, open or otherwise operate on a TUN device.
+    /// * [io::ErrorKind::OutOfMemory] - the operating system ran out of resources to create new
+    ///   TUN devices.
+    /// * [io::ErrorKind::Other] - some other unspecified platform-specific error occurred.
+    ///
+    /// # Platform Considerations
+    ///
+    /// MacOS and Windows (wintun) do not implement any kind of persistent TUN device capability;
+    /// as such, TUN devices can only be created via [`Tun::new`] or similar on these platforms.
+    ///
+    /// OpenBSD and NetBSD both support persistent TUN devices, but do not support auto-assigning
+    /// an unused TUN device number. Persistent TUN devices _can_ be created based on a particular
+    /// device number, however, so (non-atomically) mimicking [`Tun::create`] is possible by
+    /// iterating through low to high device numbers and attempting to call [`Tun::create_numbered`]
+    /// for each.
     #[cfg(not(any(
         target_os = "macos",
         target_os = "netbsd",
@@ -66,34 +85,49 @@ impl Tun {
         target_os = "windows"
     )))]
     #[inline]
-    pub fn create() -> io::Result<Interface> {
+    pub fn create() -> io::Result<u32> {
+        // TODO: this should return u32
         TunImpl::create()
     }
 
-    /// Creates a new persistent TUN device of the given device number, erroring if the device
-    /// already exists.
+    /// Creates a new persistent TUN device of the provided device number.
     ///
-    /// A handle to the created TUN device may subsequently be opened using [`Tun::new_numbered`] (or
-    /// [`Tun::open`] if the `portable-racy` feature is enabled). The created TUN device is
-    /// persistent until OS reboot unless it is explicitly destroyed.
+    /// On success, the created TUN device may subsequently be opened using [`Tun::open`] or
+    /// [`Tun::new_named`]. The created device is persistent until OS reboot unless it is explicitly
+    /// destroyed via a call to [`Tun::destroy`] or [`Tun::destroy_numbered`].
+    ///
+    /// # Errors
+    ///
+    /// On failure, this function will return an error with one of the following [`io::ErrorKind`]s:
+    /// * [io::ErrorKind::PermissionDenied] - the calling application did not have the right
+    ///   privileges to open a TUN device, or else was constrained by an OS-level security policy
+    ///   that forbids creation of TUN devices. Most operating systems require elevated privileges
+    ///   (e.g., `CAP_NET_ADMIN` in Linux) to create, open or otherwise operate on a TUN device.
+    /// * [io::ErrorKind::AlreadyExists] - a TUN device corresponding to the provided device number
+    ///   already exists in the system.
+    /// * [io::ErrorKind::OutOfMemory] - the operating system ran out of resources to create new
+    ///   TUN devices.
+    /// * [io::ErrorKind::Other] - some other unspecified platform-specific error occurred.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     #[inline]
     pub fn create_numbered(device_num: u32) -> io::Result<()> {
         TunImpl::create_numbered(device_num)
     }
 
-    /// Destroys the provided TUN device, freeing its
+    /// Destroys the provided TUN device from the operating system, freeing up its device number
+    /// for reuse.
     pub fn destroy(self) -> io::Result<()> {
         self.inner.destroy()
     }
 
-    /// Destroys the TUN device specified by the given interface name.
+    /// Destroys the TUN device specified by the given interface name, freeing up the interface for
+    /// reuse.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn destroy_named(if_name: Interface) -> io::Result<()> {
         TunImpl::destroy_named(if_name)
     }
 
-    /// Destroys the TUN device specified by the given interface number.
+    /// Destroys the TUN device specified by the given interface number, freeing it up for reuse.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn destroy_numbered(device_num: u32) -> io::Result<()> {
         TunImpl::destroy_numbered(device_num)

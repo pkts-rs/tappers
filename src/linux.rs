@@ -39,7 +39,7 @@ pub(crate) struct TunImpl {
 
 impl TunImpl {
     #[inline]
-    pub fn create() -> io::Result<Interface> {
+    pub fn create() -> io::Result<u32> {
         Tun::create()
     }
 
@@ -176,7 +176,7 @@ pub(crate) struct TapImpl {
 
 impl TapImpl {
     #[inline]
-    pub fn create() -> io::Result<Interface> {
+    pub fn create() -> io::Result<u32> {
         Tap::create()
     }
 

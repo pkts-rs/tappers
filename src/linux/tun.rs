@@ -14,7 +14,7 @@ use std::io::{Read, Write};
 use std::net::IpAddr;
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd};
-use std::{array, io, ptr};
+use std::{io, ptr};
 
 use crate::RawFd;
 use crate::{AddAddress, AddressInfo, DeviceState, Interface};
@@ -47,7 +47,7 @@ impl Tun {
     /// and open a TUN device in one operation, the `Tun::new()` function may be used, though it is
     /// only supported on certain platforms.
     #[inline]
-    pub fn create() -> io::Result<Interface> {
+    pub fn create() -> io::Result<u32> {
         let flags = libc::IFF_TUN_EXCL | libc::IFF_TUN | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
@@ -70,7 +70,11 @@ impl Tun {
         tun.set_persistent(true)?;
         drop(tun);
 
-        Ok(unsafe { Interface::from_raw(array::from_fn(|i| req.ifr_name[i] as u8)) })
+        let if_name = unsafe { Interface::from_raw(req.ifr_name.map(|c| c as u8)) };
+        if_name.device_number().ok_or(io::Error::new(
+            io::ErrorKind::Other,
+            "malformed TUN name returned from interface creation",
+        ))
     }
 
     /// Creates a new persistent TUN device of the given name.

@@ -46,7 +46,7 @@ impl Tap {
     /// The created TAP device may subsequently be opened using [`Tap::open`]. To atomically create
     /// and open a TAP device in one operation, the [`Tap::new()`] function may be used.
     #[inline]
-    pub fn create() -> io::Result<Interface> {
+    pub fn create() -> io::Result<u32> {
         let flags = libc::IFF_TUN_EXCL | libc::IFF_TAP | libc::IFF_NO_PI;
 
         let mut req = libc::ifreq {
@@ -69,7 +69,11 @@ impl Tap {
         tap.set_persistent(true)?;
         drop(tap);
 
-        Ok(unsafe { Interface::from_raw(req.ifr_name.map(|c| c as u8)) })
+        let if_name = unsafe { Interface::from_raw(req.ifr_name.map(|c| c as u8)) };
+        if_name.device_number().ok_or(io::Error::new(
+            io::ErrorKind::Other,
+            "malformed TUN name returned from interface creation",
+        ))
     }
 
     /// Creates a new persistent TAP device of the given name.

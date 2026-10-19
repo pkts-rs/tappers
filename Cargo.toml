@@ -35,7 +35,7 @@ portable-racy = []
 
 [dependencies]
 libc = { version = "0.2" }
-windows-sys = { version = "0.59", features = ["Win32", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System", "Win32_System_LibraryLoader", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_Security_Cryptography", "Win32_Security_WinTrust", "Win32_Storage_FileSystem", "Win32_System","Win32_System_LibraryLoader", "Win32_System_Threading"] }
 once_cell = { version = "1.19" }
 mio = { version = "0.8.11", features = ["net"], optional = true }
 tokio = { version = "1.38.1", features = ["net", "rt", "time"], optional = true }

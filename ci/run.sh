@@ -44,6 +44,14 @@ esac
 
 case "${OS}" in
     windows*)
+        # The runner in `.cargo/config.toml` starts tests in a new elevated window and returns
+        # without waiting for them. CI is already elevated, so run tests directly instead.
+        export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUNNER=env
+
+        # `wintun-runtime` loads `wintun.dll` from the directory of the test executable
+        mkdir -p target/debug/deps
+        cp -f wintun.dll target/debug/deps/
+
         cargo test --all-targets -- --nocapture
 
         cargo test --all-targets --features wintun -- --nocapture

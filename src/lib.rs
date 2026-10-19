@@ -239,9 +239,13 @@ use std::str::FromStr;
 use std::{array, io};
 
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Foundation::{ERROR_DEV_NOT_EXIST, ERROR_NO_DATA};
+use windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER;
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::NetworkManagement::IpHelper::{GetAdapterIndex, MAX_ADAPTER_NAME};
+use windows_sys::Win32::NetworkManagement::IpHelper::{
+    ConvertInterfaceAliasToLuid, ConvertInterfaceLuidToIndex, MAX_ADAPTER_NAME,
+};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::NetworkManagement::Ndis::NET_LUID_LH;
 
 #[cfg(not(target_os = "windows"))]
 use crate::libc_extra::*;
@@ -805,19 +809,22 @@ impl Interface {
     #[cfg(target_os = "windows")]
     #[inline]
     fn index_impl(&self) -> io::Result<u32> {
+        // `GetAdapterIndex()` expects the adapter name (`\DEVICE\TCPIP_{GUID}`), whereas
+        // `Interface` holds the interface alias.
+        let mut luid = NET_LUID_LH { Value: 0 };
+        match unsafe { ConvertInterfaceAliasToLuid(self.name.as_ptr(), &raw mut luid) } {
+            0 => (),
+            // Returned when no interface has the given alias.
+            ERROR_INVALID_PARAMETER => return Err(io::ErrorKind::NotFound.into()),
+            e => return Err(io::Error::from_raw_os_error(e as i32)),
+        }
+
         let mut index = 0u32;
-        match unsafe { GetAdapterIndex(self.name.as_ptr(), &raw mut index) } {
+        match unsafe { ConvertInterfaceLuidToIndex(&raw const luid, &raw mut index) } {
             0 => Ok(index),
-            ERROR_DEV_NOT_EXIST | ERROR_NO_DATA => Err(io::ErrorKind::NotFound.into()),
-            e => Err(io::Error::other(format!(
-                "GetAdapterIndex returned error {}",
-                e
-            ))),
+            e => Err(io::Error::from_raw_os_error(e as i32)),
         }
     }
-
-    // TODO: If the above doesn't work, use ConvertInterfaceNameToLuidA (or else get the LUID
-    // directly) and `ConvertInterfaceLuidToIndex`
 
     /// Retrieves the name of the interface.
     pub fn name(&self) -> OsString {

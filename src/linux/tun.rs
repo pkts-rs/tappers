@@ -149,6 +149,9 @@ impl Tun {
     pub fn exists(if_name: Interface) -> io::Result<bool> {
         let sockfd =
             unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        if sockfd < 0 {
+            return Err(io::Error::last_os_error());
+        }
 
         let mut req = libc::ifreq {
             ifr_name: if_name.name_raw_char(),
@@ -599,9 +602,9 @@ impl Tun {
 
     #[inline]
     fn close_fd(fd: RawFd) {
-        unsafe {
-            debug_assert_eq!(libc::close(fd), 0);
-        }
+        // `debug_assert_eq!` is compiled out in release builds, so the call must stay outside it.
+        let res = unsafe { libc::close(fd) };
+        debug_assert_eq!(res, 0);
     }
 }
 

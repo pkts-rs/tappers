@@ -8,22 +8,39 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Load-time dynamic linking of the Wintun library.
+//! Run-time dynamic loading of the Wintun library.
 
 #![allow(non_snake_case)]
 
-use std::ffi::CStr;
-use std::ptr::NonNull;
+use std::ffi::{CStr, OsStr};
+use std::fs::{File, OpenOptions};
+#[cfg(any(not(doc), target_os = "windows"))]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(any(not(doc), target_os = "windows"))]
+use std::os::windows::fs::OpenOptionsExt;
+#[cfg(any(not(doc), target_os = "windows"))]
+use std::os::windows::io::AsRawHandle;
+use std::path::Path;
+use std::ptr::{self, NonNull};
 use std::{io, mem};
 
-use windows_sys::core::{GUID, PCWSTR};
-use windows_sys::Win32::Foundation::{BOOL, HANDLE};
+use windows_sys::core::{BOOL, GUID, PCWSTR};
+use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::NetworkManagement::Ndis::NET_LUID_LH;
-use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
+use windows_sys::Win32::Security::WinTrust::{
+    WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0,
+    WINTRUST_FILE_INFO, WTD_CHOICE_FILE, WTD_REVOKE_NONE, WTD_STATEACTION_CLOSE,
+    WTD_STATEACTION_VERIFY, WTD_UI_NONE,
+};
+use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+use windows_sys::Win32::System::LibraryLoader::{
+    GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_APPLICATION_DIR,
+    LOAD_LIBRARY_SEARCH_SYSTEM32,
+};
 
 use super::{WintunAdapter, WintunLoggerCallback, WintunPacket, WintunSession};
 
-const WINTUN_LIB: *const u8 = c"wintun.dll".as_ptr() as *const u8;
+const WINTUN_LIB: &str = "wintun.dll";
 
 pub struct Wintun {
     api: WintunApi,
@@ -195,14 +212,14 @@ impl Wintun {
             )?),
             WintunDeleteDriver: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
                 lib,
-                c"WintunDeleteAdapter",
+                c"WintunDeleteDriver",
             )?),
             WintunGetAdapterLUID: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
                 lib,
                 c"WintunGetAdapterLUID",
             )?),
             WintunGetRunningDriverVersion: mem::transmute::<*const libc::c_void, _>(
-                Self::resolve_func(lib, c"WintunGetRunningDriverVersio")?,
+                Self::resolve_func(lib, c"WintunGetRunningDriverVersion")?,
             ),
             WintunSetLogger: mem::transmute::<*const libc::c_void, _>(Self::resolve_func(
                 lib,
@@ -240,13 +257,25 @@ impl Wintun {
 
     /// Opens a new Wintun DLL.
     ///
+    /// The DLL is searched for only in the directory of the running executable and in the System32
+    /// directory; the current directory and `PATH` are not searched.
+    ///
     /// # Errors
     ///
-    /// If the Wintun DLL could not be found or required functions were missing from it, this
-    /// function will return an error of kind [`ErrorKind::NotFound`](io::ErrorKind::NotFound).
+    /// If required functions were missing from the Wintun DLL, this function will return an error
+    /// of kind [`ErrorKind::NotFound`](io::ErrorKind::NotFound).
     pub fn new() -> io::Result<Self> {
+        let lib_name: Vec<u16> = OsStr::new(WINTUN_LIB)
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+
         unsafe {
-            let lib = LoadLibraryA(WINTUN_LIB);
+            let lib = LoadLibraryExW(
+                lib_name.as_ptr(),
+                ptr::null_mut(),
+                LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
+            );
             if lib.is_null() {
                 return Err(io::Error::last_os_error());
             }
@@ -255,6 +284,122 @@ impl Wintun {
                 Self::resolve_api(lib).map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
 
             Ok(Self { api })
+        }
+    }
+
+    /// Opens the Wintun DLL located at the given absolute path.
+    ///
+    /// If `verify_signature` is set, the Authenticode signature of the file is verified before it
+    /// is loaded. The file is held open without write or delete sharing from the verification until
+    /// it is loaded, so it cannot be replaced in between.
+    ///
+    /// # Errors
+    ///
+    /// If `path` is not absolute, an error of kind
+    /// [`ErrorKind::InvalidInput`](io::ErrorKind::InvalidInput) is returned. If the signature
+    /// could not be verified, an error of kind
+    /// [`ErrorKind::PermissionDenied`](io::ErrorKind::PermissionDenied) is returned. If required
+    /// functions were missing from the DLL, an error of kind
+    /// [`ErrorKind::NotFound`](io::ErrorKind::NotFound) is returned.
+    pub fn from_path(path: &Path, verify_signature: bool) -> io::Result<Self> {
+        if !path.is_absolute() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Wintun DLL path must be absolute",
+            ));
+        }
+
+        let file = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(path)?;
+
+        let path_utf16: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+
+        if verify_signature {
+            Self::verify_signature(&path_utf16, &file)?;
+        }
+
+        unsafe {
+            // The DLL itself is loaded from `path`; only its dependencies are searched for in
+            // System32.
+            let lib = LoadLibraryExW(
+                path_utf16.as_ptr(),
+                ptr::null_mut(),
+                LOAD_LIBRARY_SEARCH_SYSTEM32,
+            );
+            if lib.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+
+            drop(file);
+
+            let api =
+                Self::resolve_api(lib).map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
+
+            Ok(Self { api })
+        }
+    }
+
+    /// Verifies the Authenticode signature of the file opened as `file`.
+    ///
+    /// Only the validity of the signature is checked, not the identity of the signer. Revocation
+    /// is not checked, so verification does not need network access.
+    fn verify_signature(path_utf16: &[u16], file: &File) -> io::Result<()> {
+        let mut file_info = WINTRUST_FILE_INFO {
+            cbStruct: mem::size_of::<WINTRUST_FILE_INFO>() as u32,
+            pcwszFilePath: path_utf16.as_ptr(),
+            hFile: file.as_raw_handle(),
+            pgKnownSubject: ptr::null_mut(),
+        };
+
+        let mut trust_data = WINTRUST_DATA {
+            cbStruct: mem::size_of::<WINTRUST_DATA>() as u32,
+            pPolicyCallbackData: ptr::null_mut(),
+            pSIPClientData: ptr::null_mut(),
+            dwUIChoice: WTD_UI_NONE,
+            fdwRevocationChecks: WTD_REVOKE_NONE,
+            dwUnionChoice: WTD_CHOICE_FILE,
+            Anonymous: WINTRUST_DATA_0 {
+                pFile: &raw mut file_info,
+            },
+            dwStateAction: WTD_STATEACTION_VERIFY,
+            hWVTStateData: ptr::null_mut(),
+            pwszURLReference: ptr::null_mut(),
+            dwProvFlags: 0,
+            dwUIContext: 0,
+            pSignatureSettings: ptr::null_mut(),
+        };
+
+        let mut action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+
+        let status = unsafe {
+            WinVerifyTrust(
+                ptr::null_mut(),
+                &raw mut action,
+                (&raw mut trust_data).cast(),
+            )
+        };
+
+        // The state data allocated by the verification must be released regardless of its result.
+        trust_data.dwStateAction = WTD_STATEACTION_CLOSE;
+        unsafe {
+            WinVerifyTrust(
+                ptr::null_mut(),
+                &raw mut action,
+                (&raw mut trust_data).cast(),
+            );
+        }
+
+        match status {
+            0 => Ok(()),
+            e => Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!(
+                    "Wintun DLL signature could not be verified: {}",
+                    io::Error::from_raw_os_error(e)
+                ),
+            )),
         }
     }
 

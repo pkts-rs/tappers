@@ -172,6 +172,11 @@ the OpenVPN-supported `tap-windows6` driver. `wintun` provides only TUN support,
 `tap-windows6` provides TAP and "simulated" TUN support. In either case, the appropriate driver must
 be installed; otherwise, instantiation of `Tun` and `Tap` types will fail with an error.
 
+With the `wintun-runtime` feature, `wintun.dll` is only loaded from the directory of the running
+executable or from the System32 directory, never from the current directory or `PATH`. To load it
+from elsewhere, or to have its Authenticode signature verified before it is loaded, use
+`TunAdapter::load_wintun()` or `TunAdapter::load_wintun_verified()`.
+
 ### MacOS
 
 MacOS provides a kind of TUN interface via the `utun` API, which acts mostly the same as `tun` on

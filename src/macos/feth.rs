@@ -1158,9 +1158,9 @@ impl FethTap {
             ifr_ifru: libc::__c_anonymous_ifr_ifru { ifru_flags: 0 },
         };
 
-        unsafe {
-            debug_assert_eq!(libc::ioctl(sockfd, SIOCIFDESTROY, &raw mut req), 0);
-        }
+        // `debug_assert_eq!` is compiled out in release builds, so the call must stay outside it.
+        let res = unsafe { libc::ioctl(sockfd, SIOCIFDESTROY, &raw mut req) };
+        debug_assert_eq!(res, 0);
     }
 }
 

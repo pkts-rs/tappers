@@ -10,8 +10,10 @@
 
 //! (Windows) TUN-specific interfaces provided by the `wintun` driver.
 //!
-//!
-//!
+//! With the `wintun` feature, `wintun.dll` is loaded by the Windows loader when the program
+//! starts, using the standard DLL search order. With the `wintun-runtime` feature, it is loaded on
+//! first use from the directory of the running executable or from the System32 directory, or from
+//! the path given to [`TunAdapter::load_wintun()`] or [`TunAdapter::load_wintun_verified()`].
 
 mod adapter;
 mod dll;

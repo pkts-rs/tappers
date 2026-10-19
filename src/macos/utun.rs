@@ -428,7 +428,8 @@ impl Utun {
     #[inline]
     fn destroy_impl(&self) -> io::Result<()> {
         self.set_state(DeviceState::Down)?;
-        Self::close_fd(self.fd.as_raw_fd());
+        // The descriptor is owned by `self.fd` and is closed when `destroy()` drops `self`;
+        // closing it here as well would close it twice.
 
         // NOTE: MacOS has strange behavior for `utun` interfaces.
         //
@@ -444,13 +445,6 @@ impl Utun {
         // If further bugs arise, keep chasing this thread; for now, just doing nothing works for
         // the general case.
         Ok(())
-    }
-
-    #[inline]
-    fn close_fd(fd: RawFd) {
-        unsafe {
-            debug_assert_eq!(libc::close(fd), 0);
-        }
     }
 }
 
